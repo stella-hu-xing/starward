@@ -2,6 +2,7 @@ import js from '@eslint/js';
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
 import prettier from 'eslint-config-prettier';
+import globals from 'globals';
 
 export default [
   js.configs.recommended,
@@ -9,11 +10,14 @@ export default [
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       parser: tsParser,
-      parserOptions: { ecmaVersion: 2024, sourceType: 'module' },
+      parserOptions: {
+        ecmaVersion: 2024,
+        sourceType: 'module',
+      },
       globals: {
-        ...globals.node,
         ...globals.browser,
         ...globals.es2024,
+        ...globals.node,
       },
     },
     plugins: {
@@ -27,5 +31,8 @@ export default [
       'no-console': 'off',
     },
   },
-  prettier,
+  {
+    ignores: ['dist/', 'node_modules/', '*.cjs'],
+  },
+  prettier
 ];

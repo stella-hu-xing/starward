@@ -46,15 +46,17 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "tsx": "^4.19.0",
-    "typescript": "^7.0.2",
+    "typescript": "5.8.2",
     "vite": "^8.3.6",
     "vite-plugin-pwa": "^2.0.0",
     "vitest": "^5.1.0"
   },
   "dependencies": {
+    "@eslint/js": "^10.0.1",
     "@hono/node-server": "^1.10.1",
     "@hono/zod-validator": "^0.9.1",
     "better-sqlite3": "^12.0.0",
+    "globals": "^17.14.0",
     "googleapis": "^140.0.0",
     "ical.js": "^2.2.1",
     "openai": "^6.0.0",
