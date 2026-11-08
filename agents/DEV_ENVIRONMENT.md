@@ -99,22 +99,35 @@ Stop immediately if any run pushes to `main`, creates a branch while in discuss 
 
 Deploys are manual, triggered from the phone or laptop.
 
+**V0:** GitHub Actions deploys the static frontend to Cloudflare Pages via Direct Upload.
 1. The owner runs `deploy.yml` from GitHub (workflow dispatch) on `main`.
-2. The workflow connects to the GCP VM over Tailscale or IAP, using a deploy key stored as a GitHub Actions secret.
-3. On the VM it runs: `git pull --ff-only`, `docker compose up -d --build`, then waits for `/api/health` to return 200.
-4. If the health check fails, the workflow runs `docker compose logs --tail 200` and marks the run as failed. It does not roll back automatically in v1. Rollback is `git checkout <previous-sha> && docker compose up -d --build`.
-5. Deployment is protected by a GitHub environment named `production` with required reviewer set to the owner, so each deploy needs one approval tap on the phone.
+2. The workflow runs `wrangler pages deploy dist/web --project-name=<project>` using a Cloudflare API token stored as a GitHub Actions secret.
+3. Cloudflare Pages builds the site and serves it with automatic TLS on `app.stellahu.me`.
+4. If the deploy fails, the workflow runs `wrangler pages deployment list --project-name=<project>` to show logs and marks the run as failed. No rollback is needed; a re-deploy replaces the previous version.
 
-Secrets used by deploy: the VM deploy key, the Tailscale auth key (or IAP service account), and the production host name. Production application secrets stay in `.env` on the VM and are never copied into GitHub Actions.
+**V1 (planned):** GitHub Actions deploys the Node.js backend + frontend to a GCP VM behind Caddy.
+1. The owner runs `deploy.yml` from GitHub (workflow dispatch) on `main`.
+2. The workflow connects to the VM over Tailscale or IAP, using a deploy key stored as a GitHub Actions secret.
+3. On the VM it runs: `git pull --ff-only`, `docker compose up -d --build`, then waits for `/api/health` to return 200.
+4. If the health check fails, the workflow runs `docker compose logs --tail 200` and marks the run as failed. Rollback is `git checkout <previous-sha> && docker compose up -d --build`.
+
+5. Both v0 and v1 deployments are protected by a GitHub environment named `production` with required reviewer set to the owner, so each deploy needs one approval tap on the phone.
+
+Secrets used by deploy:
+- V0: Cloudflare API token (`CLOUDFLARE_API_TOKEN`), Cloudflare account ID (`CLOUDFLARE_ACCOUNT_ID`)
+- V1: VM deploy key, Tailscale auth key (or IAP service account), production host name
+- Production application secrets (if any) stay in `.env` on the VM and are never copied into GitHub Actions.
 
 ## Observability in the workflow
 
 - Each deploy adds a Honeycomb marker with the git SHA, so traces can be compared before and after a change.
 - The deploy health check and the post-deploy smoke test both emit a span, so a failed deploy is visible in Honeycomb as well as in GitHub.
 
-## What is deliberately not in v1
+## What is deliberately not in v0
 
-- Cloud coding agents (Codex cloud, Claude Code on the web, Copilot coding agent). Revisit if local and CI-based agents struggle with tasks.
+- No VM, Docker, Caddy, Tailscale, Tailscale keys, GCP deployment, Tailscale VPNs.
+- No backend, database, auth, API endpoints, Google APIs, OpenRouter.
+- No cloud coding agents (Codex cloud, Claude Code on the web, Copilot coding agent). Revisit if local and CI-based agents struggle with tasks.
 - A separate staging environment. Covered by the shared-VM safety rules in `ARCHITECTURE.md`.
 - Automatic deploys on merge. Deploys stay manual until the owner decides otherwise.
 - Any tool that needs an always-on laptop. The laptop is not a server.
@@ -126,9 +139,11 @@ Secrets used by deploy: the VM deploy key, the Tailscale auth key (or IAP servic
 - [ ] Cline or Kilo Code installed and pointed at OpenRouter
 - [ ] `agent.yml` and `deploy.yml` workflows added in the first M0 task
 - [ ] `production` environment created with the owner as required reviewer
-- [ ] Tailscale (or IAP) access to the VM configured, with the deploy key scoped to deployment only
-- [ ] GitHub Mobile installed and signed in; a test issue with the `agent` label confirmed to trigger nothing harmful in a dry-run mode
-- [ ] First test run completed and passed (see the section above)
+- [ ] **V0:** Cloudflare Pages project created and domain `app.stellahu.me` attached
+- [ ] **V0:** Porkbun DNS CNAME added: `app` → `<project>.pages.dev`
+- [ ] **V0:** GitHub Actions secrets for Cloudflare API added
+- [ ] **V0:** First deploy completed and live site verified (`https://app.stellahu.me` loads)
+- [ ] **V1:** (future) VM and its secrets set up (outside this scope)
 - [ ] Check current GitHub Actions free minutes for a private repository and the Honeycomb free tier before relying on either
 
 ## Open questions

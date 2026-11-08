@@ -1,0 +1,12 @@
+{domain}
+
+  encode zstd gzip
+
+  reverse_proxy app:3000 {
+    header_up -Host {upstream_host}
+  }
+
+  file_server {
+    root * ./dist/web
+    index index.html
+  }

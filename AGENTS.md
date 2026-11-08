@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Instructions for coding agents working in this repository. Read `README.md`, all files in `docs/` folder before making changes.
+Instructions for coding agents working in this repository. Read `README.md`, all files in the `agents/` folder before making changes.
 
 ## Stack (fixed unless the owner changes it)
 
@@ -23,7 +23,7 @@ Instructions for coding agents working in this repository. Read `README.md`, all
 personal-hub/
   AGENTS.md
   README.md
-  docs/
+  agents/
   config/
     tags.json               # fixed tag vocabulary
     models.json             # OpenRouter model slugs per task
@@ -67,7 +67,7 @@ Do not mark a task complete unless `typecheck`, `lint`, and `test` pass.
 - LLM output that fails Zod validation must not be written to domain tables. Store it in an `ai_failures` table for review, and surface a readable error.
 - All timestamps are stored as UTC ISO-8601 strings with the user's IANA timezone stored alongside when relevant. Convert to local time only in the UI or in `lib/dates.ts`.
 - Date phrases from the LLM ("next Tuesday") are resolved by deterministic code in `lib/dates.ts` using an explicit anchor date and timezone. Never let the model compute absolute dates.
-- Never store Gmail message bodies. Store only the metadata listed in `docs/DATA_MODEL.md`.
+- Never store Gmail message bodies. Store only the metadata listed in `agents/DATA_MODEL.md`.
 - Secrets come from environment variables only. Never commit `.env`. Add any new variable to `.env.example` with a comment.
 - Log through `lib/logger.ts`. Never log email bodies, OAuth tokens, or full prompts containing personal content.
 - Migrations are append-only. Never edit an applied migration; add a new one.
@@ -79,8 +79,9 @@ Do not mark a task complete unless `typecheck`, `lint`, and `test` pass.
 - Do not add new services, databases, or hosted dependencies without asking the owner first. Free-tier-first applies.
 - Do not change the stack in this file without asking.
 - Do not implement Outlook, audio storage, multi-user support, billing, or vector search. They are out of scope for v1.
-- If a requirement is ambiguous, check `docs/PLAN.md` open questions. If it is still ambiguous, stop and ask rather than guessing.
-- If you choose a default for an open question to keep building, record it in `docs/PLAN.md` under "Decisions made during build" with the date and reason.
+- If a requirement is ambiguous, check `agents/V0.md` for the defined v0 boundary. If the request falls inside v0, apply the documented scope; if it requires backend work, it is v1+ and goes to `agents/PLAN.md` open questions.
+- Do not add backend code, Dockerfile, docker-compose.yml, Caddyfile, VM infra, database migrations, auth, API routes, or feature integrations in v0. Those are deferred to later milestones.
+- Record any default taken for an open question in `agents/PLAN.md` under "Decisions made during build" with the date and reason.
 - Keep commits focused: one milestone task per commit, with a message that names the milestone (for example `M1: add FTS search for notes`).
 
 ## Security rules
@@ -97,7 +98,7 @@ These rules apply when an agent runs from `agent.yml` on an issue, in addition t
 - In build mode, work only on the branch `agent/<issue-number>`. Never push to `main`, never force-push, never modify branch protection.
 - Do not change `.github/workflows/`, `Dockerfile`, `docker-compose.yml`, `Caddyfile`, or anything that reads or writes secrets, unless the issue explicitly asks for it and the PR is labelled `needs-laptop-review`.
 - Do not add or read `.env` values, tokens, or keys. Use environment variable names from `.env.example` only.
-- Do not add telemetry that includes personal content. Follow the privacy rules in `docs/ARCHITECTURE.md`.
+- Do not add telemetry that includes personal content. Follow the privacy rules in `agents/ARCHITECTURE.md`.
 - Keep each change to one milestone task. If the issue spans several tasks, do the first and note the rest in the PR description.
 - Run `pnpm typecheck && pnpm lint && pnpm test` before opening the PR. If tests fail after one retry, stop and comment on the issue with the failure summary.
 - Open a draft PR. Do not mark it ready for review.
@@ -111,4 +112,4 @@ These rules apply when an agent runs from `agent.yml` on an issue, in addition t
 
 - The feature works in the browser on a mobile viewport (375px wide).
 - It is covered by tests at the service level.
-- It is listed in the milestone's acceptance checklist in `docs/PLAN.md`, and that checklist is ticked.
+- It is listed in the milestone's acceptance checklist in `agents/PLAN.md`, and that checklist is ticked.

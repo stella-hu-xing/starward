@@ -10,6 +10,10 @@ A single-user, mobile-first web app (installable PWA) that combines three tools:
 
 Hosted at `https://app.stellahu.me` (domain already owned: `stellahu.me`).
 
+**v0 scope:** static frontend on Cloudflare Pages via GitHub Actions. No backend, no database, no API, no auth, no feature integrations. Deploy workflow and CNAME at Porkbun documented in `agents/V0.md`.
+
+**v1 scope:** full personal assistant (notes, events, countdowns, Gmail, Calendar, push notifications). Hono + SQLite + Google APIs + OpenRouter + background jobs + VM deployment with Caddy. See `agents/PLAN.md` for milestone roadmap.
+
 ## Users
 
 One user: the owner. Multi-user is out of scope for v1, but do not hard-code single-user assumptions into data access. Subscription is a possible future feature; do not build billing.
@@ -74,7 +78,7 @@ One user: the owner. Multi-user is out of scope for v1, but do not hard-code sin
 
 ### Chat access (later milestone)
 
-- Read-only MCP server exposing: `search_notes`, `read_note`, `list_tags`, `recent_notes`. Auth via bearer token. Details in `docs/PLAN.md`, milestone M7.
+- Read-only MCP server exposing: `search_notes`, `read_note`, `list_tags`, `recent_notes`. Auth via bearer token. Details in `agents/PLAN.md`, milestone M7.
 
 ## Non-functional requirements
 
@@ -83,7 +87,7 @@ One user: the owner. Multi-user is out of scope for v1, but do not hard-code sin
 - **Privacy of AI calls.** Only send what the task needs. For email extraction, send the subject, sender, date, and body text of filtered messages only.
 - **Observability.** Structured logs. Each LLM call logs: model slug, prompt version, latency, token usage, cost if returned, success or validation failure. No raw personal content in logs.
 - **Reliability.** Background jobs are idempotent (re-running a sync does not duplicate events). Google sync uses stored `syncToken` and handles `410 Gone` by doing a full resync.
-- **Testing.** Unit tests for date resolution, countdown math, tag validation, ICS parsing, and dedupe logic. Integration test for the notes API with a real SQLite file. Eval fixtures for extraction (see `docs/PLAN.md`).
+- **Testing.** Unit tests for date resolution, countdown math, tag validation, ICS parsing, and dedupe logic. Integration test for the notes API with a real SQLite file. Eval fixtures for extraction (see `agents/PLAN.md`).
 
 ## Out of scope for v1
 
@@ -97,6 +101,7 @@ One user: the owner. Multi-user is out of scope for v1, but do not hard-code sin
 ## Related docs
 
 - `AGENTS.md`: instructions for the coding agent (conventions, commands, rules)
-- `docs/ARCHITECTURE.md`: components, deployment, configuration
-- `docs/DATA_MODEL.md`: tables, fields, indexes
-- `docs/PLAN.md`: milestones, acceptance criteria, open questions
+- `agents/ARCHITECTURE.md`: components, deployment, configuration
+- `agents/DATA_MODEL.md`: tables, fields, indexes
+- `agents/PLAN.md`: milestones, acceptance criteria, open questions
+- `agents/DEV_ENVIRONMENT.md`: development, agent, and deployment workflow

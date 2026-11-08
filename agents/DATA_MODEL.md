@@ -2,7 +2,7 @@
 
 SQLite (`/data/hub.db`). All text is UTF-8. All timestamps are UTC ISO-8601 strings (`2026-11-08T10:14:00Z`). Each time-bearing row that depends on a local timezone also stores an IANA timezone string.
 
-Migrations live in `migrations/` as numbered SQL files. The first migration creates everything below.
+Migrations live in `migrations/` as numbered SQL files, applied sequentially at startup. The first migration creates the initial schema (notes, note_tags, notes_fts, ai_calls, ai_failures); subsequent migrations add countdowns, events, sync_state, oauth_accounts, email_scans, event_candidate_sources, push_subscriptions, sessions, and auth_credentials across milestones as specified in `agents/PLAN.md`.
 
 ## Tables
 
@@ -37,7 +37,9 @@ Index: `(tag)`.
 
 Content table mirrors `notes.body`. Keep in sync with triggers on insert, update, and delete.
 
-Chinese tokenization: FTS5's default tokenizer does not segment Chinese well. Evaluate the `trigram` tokenizer first (it works for substring search across CJK characters). Record the decision in `docs/PLAN.md`.
+Chinese tokenization: FTS5's default tokenizer does not segment Chinese well. Evaluate the `trigram` tokenizer first (it works for substring search across CJK characters). Record the decision in `agents/PLAN.md`.
+
+Short-query fallback: FTS5 trigram requires queries of at least 3 characters. For 1–2 character queries (common in Chinese), fall back to a parameterized `LIKE` scan on `notes.body` with an index-assisted date-range filter. This is acceptable at the expected data scale and must be tested explicitly.
 
 ### events
 
@@ -48,24 +50,27 @@ Chinese tokenization: FTS5's default tokenizer does not segment Chinese well. Ev
 | start_at | TEXT NOT NULL | UTC |
 | end_at | TEXT | UTC, nullable for point-in-time |
 | timezone | TEXT NOT NULL | IANA |
-| all_day | INTEGER NOT NULL | 0 or 1; if 1, `start_at` and `end_at` are stored as UTC midnight of the local date and `start_date`/`end_date` are the source of truth |
+| all_day | INTEGER NOT NULL | 0 or 1; if 1, `start_date`/`end_date` are the source of truth and `start_at`/`end_at` are set to UTC midnight of the local dates for convenience only |
 | start_date | TEXT | `YYYY-MM-DD`, used for all-day |
 | end_date | TEXT | `YYYY-MM-DD`, exclusive end for all-day |
 | location | TEXT | optional |
 | description | TEXT | optional |
 | source | TEXT NOT NULL | `manual`, `gcal`, `ics`, `gmail` |
 | source_id | TEXT | gcal event id, ICS UID, or gmail message id |
+| source_sub_id | TEXT | optional stable discriminator: gmail candidate ordinal, ICS recurrence instance ID, gcal instance identity |
 | status | TEXT NOT NULL | `confirmed`, `candidate`, `rejected`, `cancelled` |
 | confidence | REAL | from extraction, nullable |
 | created_at | TEXT NOT NULL | UTC |
 | updated_at | TEXT NOT NULL | UTC |
 
-Unique index: `(source, source_id)` where `source_id` is not null. Indexes: `(start_at)`, `(status, start_at)`.
+Unique index: `(source, source_id, source_sub_id)` where `source_id` is not null. Indexes: `(start_at)`, `(status, start_at)`.
 
 Rules:
-- Candidates from `gmail` start as `candidate`. Accepting sets `confirmed`. Rejecting sets `rejected` and the same source id will not be re-proposed.
-- `gcal` and `ics` items are written as `confirmed` directly, but a `cancelled` upstream event sets `cancelled`.
-- Manual events are `confirmed`.
+- Candidates from `gmail` start as `candidate`. Accepting sets `confirmed`. Rejecting sets `rejected` and the same `(source_id, source_sub_id)` will not be re-proposed.
+- `gcal` items are written as `confirmed`; upsert by gcal event ID. Cancelled upstream sets `cancelled`.
+- `ics` items are written as `confirmed`; upsert by `(source_id=UID, source_sub_id=recurrence_instance_id)`; non-recurring events have empty `source_sub_id`.
+- Manual events are `confirmed`; `source_id` is empty.
+- Cross-source deduplication (same real event from Gmail and Google Calendar) is a future feature; out of scope for v1.
 
 ### event_candidate_sources
 
@@ -146,17 +151,21 @@ Log of every LLM call, used for debugging and cost tracking. No raw personal con
 
 ### ai_failures
 
-Stores LLM output that failed validation, for manual review. Keep for 14 days.
+Stores diagnostic information for LLM calls that failed validation, for manual review. Keep for 14 days.
 
 | column | type | notes |
 |---|---|---|
 | id | TEXT PK | UUIDv7 |
 | ai_call_id | TEXT NOT NULL | FK → ai_calls.id |
-| raw_output | TEXT NOT NULL | |
-| validation_error | TEXT NOT NULL | |
+| error_category | TEXT NOT NULL | `validation_failed`, `schema_mismatch`, `empty_output`, `timeout` |
+| validation_paths | TEXT | JSON array of failed Zod path strings (bounded length) |
+| validation_error_summary | TEXT NOT NULL | short human-readable summary, no personal content |
+| model | TEXT NOT NULL | OpenRouter slug |
+| prompt_version | TEXT NOT NULL | |
+| latency_ms | INTEGER | |
 | created_at | TEXT NOT NULL | UTC |
 
-Note: `raw_output` for email extraction must not contain email bodies. If the model echoes the body, the extraction prompt is wrong; fix the prompt.
+Privacy rule: never persist raw model output, error objects that may embed it, or any input containing personal content. Only structured diagnostics are stored.
 
 ### sessions
 

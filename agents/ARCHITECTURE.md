@@ -36,7 +36,12 @@ DNS: app.stellahu.me → host IP (A record at the DNS provider of the domain)
 
 ## Deployment
 
-- Target host: any Linux VPS with Docker. Host choice is pending (see open questions). Keep deployment identical across hosts.
+### V0 (completed in `agents/V0.md`)
+Static frontend on Cloudflare Pages via GitHub Actions Direct Upload. No VM, Docker, Caddy, GCP, or backend. Deploy workflow documents this path. Domain `app.stellahu.me` attached to Pages; CNAME at Porkbun. Secrets in GitHub Actions secrets only.
+
+### V1 (planned)
+Target host: any Linux VPS with Docker. For M0, resolved to Google Cloud Compute Engine `e2-micro` (free-tier eligible), in the region chosen under `agents/PLAN.md` Q11 (default applied: `us-west1`); see `agents/PLAN.md` Q1. Keep deployment identical across hosts. Host choice is now resolved, not pending.
+
 - `docker-compose.yml` defines two services:
   - `app`: built from the `Dockerfile`, exposes port 3000 internally, mounts `./data:/data` for the SQLite file.
   - `caddy`: official Caddy image, ports 80 and 443, reverse-proxies `app.stellahu.me` to `app:3000`, automatic certificates.
@@ -45,7 +50,7 @@ DNS: app.stellahu.me → host IP (A record at the DNS provider of the domain)
 
 ## Dockerfile expectations
 
-- Multi-stage build: install and build in a builder stage, copy only `dist/`, `node_modules` (production), and `migrations/` into the runtime image.
+- Multi-stage build: install and build in a builder stage, copy only compiled `dist/`, production `node_modules/`, `migrations/`, `config/`, and server-side prompt templates into the runtime image. Runtime secrets come from environment variables; config and prompts are non-secret build inputs.
 - Base image: `node:22-slim`.
 - Run as a non-root user.
 - Health endpoint at `/api/health`.
@@ -118,7 +123,7 @@ Note: the note is saved before AI runs, so an AI outage never loses content.
 
 ### ICS import
 1. User uploads `.ics` (max 2 MB).
-2. Parse with an ICS library (`ical.js` or `node-ical`; pick one and record the choice in `docs/PLAN.md`).
+2. Parse with an ICS library (`ical.js` or `node-ical`; pick one and record the choice in `agents/PLAN.md`).
 3. Each VEVENT becomes an event with `source = ics`, `status = confirmed`, `source_id = UID`. Re-import upserts by UID.
 
 ### Countdown display
@@ -139,6 +144,22 @@ Single owner. Two candidate modes (decision pending):
 - **Password + TOTP**: a password hash (argon2id) and a TOTP secret for an authenticator app.
 
 Either way: session cookie `HttpOnly`, `Secure`, `SameSite=Lax`, with sliding expiry of 30 days. CSRF protection on state-changing routes.
+
+## Observability
+
+- OpenTelemetry Node SDK wired to Honeycomb (`HONEYCOMB_API_KEY`).
+- HTTP auto-instrumentation on; a `/api/health` span visible in Honeycomb.
+- Custom spans/metrics for LLM calls: model slug, prompt version, latency, token usage, cost if returned, success or validation failure.
+- No personal content in logs or traces; structured logs only through `src/server/lib/logger.ts`.
+
+## Security and isolation notes
+
+- Shared single VM: if the app and any process share the host, isolate credentials and limit process scope; do not treat a single user as a multi-tenant boundary.
+
+## Deployment safety
+
+- Migrations are append-only; never edit an applied migration, add a new one.
+- Rollback procedure for an older application version is a code checkout plus redeploy; database rollback is not automatic and requires a tested restore path.
 
 ## Non-goals for architecture
 
