@@ -6,7 +6,6 @@ import { config } from './config';
 import { healthRouter } from './routes/health';
 import { notesRouter } from './routes/notes';
 import { eventsRouter } from './routes/events';
-import { countdownsRouter } from './routes/countdowns';
 
 const app = new Hono();
 
