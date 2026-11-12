@@ -8,21 +8,31 @@ on:
         required: true
         default: starward
 
+permissions:
+  contents: read
+
 jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+
   deploy:
+    needs: build
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'pnpm'
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Build web app
-        run: pnpm build:web
+      - name: Download successful web build
+        uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: dist/web/
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:

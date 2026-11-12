@@ -1,3 +1,5 @@
+# V0 only builds the static frontend; no native SQLite backend is needed.
+# Keep dependency build scripts denied unless explicitly reviewed here.
 allowBuilds:
-  better-sqlite3: set this to true or false
-  esbuild: set this to true or false
+  better-sqlite3: false
+  esbuild: true

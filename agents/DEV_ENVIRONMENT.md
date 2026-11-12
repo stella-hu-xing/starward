@@ -100,10 +100,12 @@ Stop immediately if any run pushes to `main`, creates a branch while in discuss 
 Deploys are manual, triggered from the phone or laptop.
 
 **V0:** GitHub Actions deploys the static frontend to Cloudflare Pages via Direct Upload.
-1. The owner runs `deploy.yml` from GitHub (workflow dispatch) on `main`.
-2. The workflow runs `wrangler pages deploy dist/web --project-name=<project>` using a Cloudflare API token stored as a GitHub Actions secret.
-3. Cloudflare Pages builds the site and serves it with automatic TLS on `app.stellahu.me`.
-4. If the deploy fails, the workflow runs `wrangler pages deployment list --project-name=<project>` to show logs and marks the run as failed. No rollback is needed; a re-deploy replaces the previous version.
+1. The owner runs `deploy.yml` from GitHub (workflow dispatch) on `main`; other branches are skipped.
+2. The `build` job calls the reusable CI workflow for that exact commit. It installs the pnpm version pinned in `package.json` before `setup-node` configures Node 22 and pnpm caching, then prints both versions. It installs with the frozen lockfile, runs web typecheck, lint, tests, then `pnpm build:web`. It uploads `dist/web/` as the `web-build` artifact only after success.
+   - `pnpm-workspace.yaml` explicitly allows the `esbuild` install script and denies `better-sqlite3` scripts for static-only v0. No interactive `pnpm approve-builds` is needed in CI. Revisit SQLite build approval before running the v1 backend.
+3. The `deploy` job declares `needs: build`, so a failed, cancelled, or skipped build blocks deployment. After the build succeeds, the owner approves the `production` environment (when required reviewers are configured).
+4. The deploy job downloads the successful build artifact and runs `wrangler pages deploy dist/web --project-name=<project>` using the Cloudflare API token from GitHub Actions secrets. It does not rebuild the app. Cloudflare Pages serves the uploaded files with automatic TLS on `app.stellahu.me`.
+5. If deployment fails, inspect the GitHub Actions logs; the existing production deployment remains available. Re-run the workflow after fixing the failure.
 
 **V1 (planned):** GitHub Actions deploys the Node.js backend + frontend to a GCP VM behind Caddy.
 1. The owner runs `deploy.yml` from GitHub (workflow dispatch) on `main`.
