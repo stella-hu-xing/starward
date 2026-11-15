@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { config } from '../config';
+import { config } from '../config.js';
 
 export const notesRouter = new Hono();
 

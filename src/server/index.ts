@@ -2,9 +2,9 @@ import { Hono } from 'hono';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { logger } from 'hono/logger';
 import { cors } from 'hono/cors';
-import { config } from './config';
-import { healthRouter } from './routes/health';
-import { notesRouter } from './routes/notes';
+import { config } from './config.js';
+import { healthRouter } from './routes/health.js';
+import { notesRouter } from './routes/notes.js';
 
 const app = new Hono();
 

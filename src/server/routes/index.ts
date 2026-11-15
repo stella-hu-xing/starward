@@ -1,19 +1,13 @@
-import { Router } from 'hono';
-import { healthRouter } from './health';
-import { notesRouter } from './notes';
-import { inboxRouter } from './inbox';
-import { exportRouter } from './export';
-import { authRouter } from './auth';
-import { mcpRouter } from './mcp';
+import { Hono } from 'hono';
+import { healthRouter } from './health.js';
+import { notesRouter } from './notes.js';
 
-const app = new Router();
+// Composed API router: mounts only the routers that exist in this scaffold.
+// Legacy inbox/export/auth/mcp route mounts were removed on 2026-11-15;
+// those routers were never implemented here.
+const app = new Hono();
 
 app.route('/api', healthRouter);
 app.route('/api/notes', notesRouter);
-app.route('/api/notes/:id', notesRouter.get);
-app.route('/api/inbox', inboxRouter);
-app.route('/api/export', exportRouter);
-app.route('/api/auth/login', authRouter.post);
-app.route('/mcp', mcpRouter);
 
 export default app;

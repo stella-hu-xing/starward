@@ -1,6 +1,6 @@
 # Implementation plan — AI chat journal
 
-> Reset 2026-11-15. All implementation checks below are unchecked intentionally. The repository contains the older combined-app scaffold; docs do not prove features work.
+> Reset 2026-11-15. Implementation checks below are unchecked until their milestone work is done, except the M0 baseline toolchain fixed on 2026-11-15. The repository contains the older combined-app scaffold; docs do not prove features work.
 
 ## Delivery order
 
@@ -8,7 +8,7 @@ Foundation -> text chat -> push-to-talk -> daily reports/archive. v1 requires al
 
 ## M0 — Local runtime and persistence (v1)
 
-- [ ] Establish pinned Node 22/pnpm and baseline typecheck/lint/test/build. Fix missing Hono declarations/dependency, NodeNext imports, and TypeScript/Node type compatibility in a focused task.
+- [x] Establish pinned Node 22/pnpm and baseline typecheck/lint/test/build. Fix missing Hono declarations/dependency, NodeNext imports, and TypeScript/Node type compatibility in a focused task.
 - [ ] Review better-sqlite3 build-script approval/native compatibility; verify real SQLite read/write with a temporary database.
 - [ ] Start a real Hono Node listener; serve built UI/API on one local origin. Bind backend and Vite to loopback; verify a real HTTP health check.
 - [ ] Audit migration/data state and choose a safe repair path. Implement migration tracking, repositories, the v1 schema, and backup/restore tests. Never reset data without approval.
@@ -95,6 +95,7 @@ Continuous voice, PDF export, email delivery, and explicit report-derived chat m
 | 2026-11-15 | Remove obsolete static-only v0 milestone; retain the independent personal-site plan | Old no-backend/five-screen rules conflict with the new app; site decisions remain useful |
 | 2026-11-15 | Documentation only; no runtime/dependency/config/migration/workflow changes or deployments | Owner requested a documentation reset first |
 | 2026-11-15 | Repository hosts only the AI chat journal; schedule/countdown routes, screens, calendar/gmail sync + OAuth settings, web-push reminder config, related legacy SQL tables, and the googleapis/ical.js dependencies removed | Owner decision: the schedule and countdown products move to another place |
+| 2026-11-15 | Add hono as a direct dependency, drop the default DOM lib from the server tsconfig, add .js extensions for NodeNext relative imports, repair routes/index.ts to the existing routers, and pin engines.node >=22 | Fix the failing backend typecheck/build recorded as an M0 blocker |
 
 ## Validation record — documentation reset
 
@@ -129,3 +130,19 @@ Follow-up to the documentation reset, executed on the owner's decision that this
 | pnpm typecheck:server | Failed as before on pre-existing scaffold errors (unresolved hono imports, NodeNext relative-import extensions, DOM/Node type conflicts) — unchanged M0 blockers; no new errors from this removal |
 
 Checks ran on 2026-11-15 with the available Node 26.8.1 and pinned pnpm 12.18.0, not the target CI Node 22. No deployment was triggered.
+
+## Validation record — backend build fix (2026-11-15)
+
+Fixed the failing server typecheck/build recorded as an M0 blocker. The failure was not the Node runtime version: `tsc` does not depend on the runtime, and CI already pinned Node 22. Root causes: (1) `hono` was missing from `dependencies` — only the `@hono/node-server`/`@hono/zod-validator` peer entries pulled it into the pnpm store, so TS2307 could not resolve it from `node_modules`; (2) `tsconfig.server.json` set no `lib`, so the default full lib loaded DOM types that conflict with `@types/node` 26 (`TS2430` TextDecoder/TextEncoder); (3) NodeNext module resolution requires explicit `.js` extensions on relative imports (`TS2835`); (4) `src/server/routes/index.ts` imported non-existent inbox/export/auth/mcp routers and composed with `Router` instead of `Hono`.
+
+Changes: `pnpm add hono@^4.13.17` (matches the already-locked peer version; no other package versions changed), `"lib": ["ES2024"]` in `tsconfig.server.json`, `.js` extensions in `src/server/index.ts`, `src/server/db/index.ts`, and `src/server/routes/notes.ts`, `routes/index.ts` rewritten to mount only the existing health/notes routers, `engines.node >=22` in `package.json`, and stale `dist/server` orphans (countdowns/events artifacts from the pre-removal build) cleaned before rebuild.
+
+| Check | Result |
+|---|---|
+| pnpm install --frozen-lockfile | Passed |
+| pnpm typecheck:server | Passed (previously failed) |
+| pnpm build:server, clean outDir | Passed (previously failed); dist/server/routes contains only health/index/notes |
+| pnpm typecheck:web / lint / test / build:web | Passed |
+| git diff --check | Passed |
+
+Checks ran on 2026-11-15 with the available Node 26.8.1 and pinned pnpm 12.18.0; CI pins Node 22 with the same lockfile. No provider was called, no data or deployment was touched, and CI still does not typecheck/build the server (separate M0 item).

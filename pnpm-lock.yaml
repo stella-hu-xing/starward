@@ -181,6 +181,9 @@ importers:
       globals:
         specifier: ^17.14.0
         version: 17.14.0
+      hono:
+        specifier: ^4.13.17
+        version: 4.13.17
       openai:
         specifier: ^6.0.0
         version: 6.49.0(zod@4.6.7)
