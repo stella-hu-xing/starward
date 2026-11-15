@@ -1,6 +1,6 @@
 # Starward — AI chat journal
 
-> Documentation reset: 2026-11-15. This repository hosts only the AI chat journal. Schedule and countdown content was removed from the code on 2026-11-15 and will be moved to a separate project. The remaining code is an older scaffold, not an implementation of the requirements below. The repository name is unchanged; the final app name is undecided.
+> Updated: 2026-11-15. This repository hosts only the AI chat journal. The responsive Chat/Journal mock UI is complete; backend features below remain planned. Schedule and countdown content was removed on 2026-11-15 and will move to a separate project. The repository name is unchanged; the final app name is undecided.
 
 ## Goal
 
@@ -76,6 +76,16 @@ Start with one server serving the built UI and API on one origin, bound to loopb
 ## Current implementation status
 
 The legacy Home/Notes shell has been replaced with a typed, in-memory Chat/Journal/Settings demo. Chat supports conversation selection, new chats, a growing composer, and progressively revealed canned replies. Journal browses chat history by month, with topic chips, cross-chat daily summaries, and links back to conversations. This is a history calendar, not a scheduling feature. English/Chinese and a voice-source fixture are included. Reloading resets all demo changes; no API or real AI is called, and summaries are static fixtures rather than generated results. Calendar helper tests are real unit tests; the health test remains a placeholder. Durable chat, transcription, report generation, local login, and scheduling remain unimplemented.
+
+### Completed (mock UI only)
+
+- [x] Chat/Journal/Settings navigation, six synthetic conversations, chat selection/creation, timestamps, auto-growing composer, and progressively revealed canned replies.
+- [x] Basic chat Markdown rendering without raw HTML; English/Chinese and voice-source fixtures.
+- [x] Journal month navigation, cross-conversation daily activity, topic labels, static summaries/cutoff metadata, empty days, and links back to chats.
+- [x] Responsive layout with mobile drawer, safe-area padding, larger touch controls, and compact calendar. Headless Chrome checks passed at 320–1280px widths and phone landscape, with no document horizontal overflow and the composer visible.
+- [x] Full typecheck, lint, 13 tests (12 calendar helper tests and one placeholder health assertion), and frontend build passed during implementation.
+- [ ] Physical-phone keyboard/notch checks and visual acceptance.
+- [ ] Backend persistence, real provider streaming, transcription, report generation/revisions, and local login (see the [implementation plan](agents/PLAN.md)).
 
 The current deployment workflow uploads a static build to Cloudflare Pages, not the planned backend. Environment examples, migrations, PWA metadata, and deployment files still reflect the older scaffold and need a reviewed implementation pass. On 2026-11-15 the schedule/countdown routes and screens, calendar/gmail sync and OAuth settings, and the googleapis/ical.js dependencies were removed from this scaffold ahead of the move to another project; no feature was added.
 

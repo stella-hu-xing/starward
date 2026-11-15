@@ -1,10 +1,28 @@
 # Implementation plan — AI chat journal
 
-> Reset 2026-11-15. Implementation checks below are unchecked until their milestone work is done, except the M0 baseline toolchain fixed on 2026-11-15. The repository contains the older combined-app scaffold; docs do not prove features work.
+> Updated 2026-11-15. Baseline toolchain repairs and the responsive mock Chat/Journal UI are complete. Checked items record delivered work; unchecked items remain planned. The backend is still scaffold code, and mock UI completion does not complete M0–M3.
 
 ## Delivery order
 
 Foundation -> text chat -> push-to-talk -> daily reports/archive. v1 requires all four milestones. Report scheduling, tags, and search follow in v1.5. The schedule/countdown products were removed from this repository on 2026-11-15 for a move to another project; do not split effort across them or production hosting.
+
+## Completed — Mock Chat/Journal UI (2026-11-15)
+
+Delivered and merged in PR #13 (`3fd6cb3`). This is a typed, in-memory demo, not durable chat or generated reports.
+
+- [x] Replace Home/Notes with Chat/Journal/Settings navigation and shared React state.
+- [x] Add six synthetic English/Chinese conversations, timestamps, voice-source fixture labeling, canned replies, and static daily summaries.
+- [x] Create/select chats, auto-grow the composer, reveal canned assistant replies progressively, and block new turns while the selected chat is streaming. Preserve Chinese IME composition on Enter.
+- [x] Render basic chat Markdown as React nodes without raw HTML or executable links.
+- [x] Add a Monday-first month calendar, previous/next/Today controls, selected-day details, conversation counts, topic labels, summary coverage metadata, and links back to chats.
+- [x] Group eligible messages across conversations by explicit IANA timezone; exclude unfinished assistant messages. Keep `Australia/Melbourne` as a demo default, pending owner confirmation.
+- [x] Add 12 calendar helper tests for day keys, timezone/DST conversion, leap years, month arithmetic/grids, cross-chat aggregation, unfinished-assistant exclusion, empty data/months, and labels.
+- [x] Add responsive drawer/close controls, safe-area padding, compact mobile calendar with readable topics in day details, 44px minimum-height primary controls, and landscape spacing.
+- [x] Check Chat/Journal/Settings in headless Chrome at 320×640, 375×812, 430×932, 768×1024, 1280×800, and 667×375: no document horizontal overflow; composer visible. Check drawer bounds, New chat dismissal, and dark-mode colors.
+- [x] Pass full typecheck, lint, all 13 tests (12 calendar tests plus the pre-existing placeholder health test), frontend production build, formatting, and Git whitespace checks.
+- [ ] Finish physical-phone keyboard/notch checks and visual acceptance; headless geometry checks do not replace these.
+
+Reloading resets demo state. No provider/API integration, database persistence, recording/transcription, report generation, report revisions, or login is implemented by this UI work. M1/M3 below track the remaining durable feature work.
 
 ## M0 — Local runtime and persistence (v1)
 
@@ -15,19 +33,21 @@ Foundation -> text chat -> push-to-talk -> daily reports/archive. v1 requires al
 - [ ] Finalize Claude integration, chat/report model IDs, STT provider/model/audio limits, owner credential provisioning/hashing, and timezone. Update configuration and .env.example together.
 - [ ] Implement local owner login/session, hashed credentials/tokens, private-route protection, origin/CSRF checks, and rate limits. No signup.
 - [x] Replace legacy Home/Notes navigation with Chat/Journal/Settings using typed mock data (2026-11-15). This is an in-memory UI only; persistence, provider streaming, and summary generation remain M1/M3 work.
-- [ ] Review legacy PWA metadata/caching and retire remaining unrelated config/dependencies. Responsive follow-up (2026-11-15): headless Chrome checks passed across Chat/Journal/Settings at 320, 375, 430, 768, and 1280px widths plus 667×375 landscape: no document horizontal overflow; composer visible. Verified mobile drawer/New chat dismissal and dark-mode colors. Added 44px control targets, safe-area padding, compact mobile calendar with topics in day details, and explicit drawer close. Physical-device keyboard/notch and visual acceptance remain pending.
+- [ ] Review legacy PWA metadata/caching and retire remaining unrelated config/dependencies. Responsive mock UI work and its verified checks are recorded separately above.
 - [ ] Make CI typecheck/build the server too, with real repository/HTTP tests and mocked providers. Do not deploy the local backend via static Pages.
 
 Acceptance: reproducible install, full passing checks, HTTP startup, session protection, migrations/restart persistence, disposable backup/restore, no browser secrets/private API caches. No paid API call required.
 
 ## M1 — Durable streaming text chat (v1)
 
-- [ ] Create/list/reopen conversations, with a quiet Claude-like conversation view/composer, readable Markdown, and timestamps.
+- [x] Build the conversation view/composer, basic Markdown rendering, and timestamps (mock UI; see completed section).
+- [ ] Connect create/list/reopen conversations to durable backend storage; restore history after reload/restart.
 - [ ] Save user messages with conversation ID/timestamp before AI calls. Persist assistant attempts, stable sequence, and reloadable history.
 - [ ] Send full current-conversation history including the new user turn. No unrelated chats, report memory, silent truncation, or history summarization.
 - [ ] Stream typed deltas/completion/errors; persist checkpoints/status. Handle stop/disconnect/error/restart without presenting partial replies as complete.
 - [ ] Prevent concurrent turns/duplicate submissions; retry without duplicating user text. Show context-limit/provider errors without losing content.
-- [ ] Test payload order, conversation isolation, persistence, idempotent retries, interrupted attempts, safe Markdown, and 375px UI.
+- [x] Check mock UI layout at 375px and other phone/tablet/desktop sizes (headless Chrome; scope above).
+- [ ] Test payload order, conversation isolation, persistence, idempotent retries, interrupted attempts, and safe Markdown; repeat responsive acceptance with the integrated backend.
 
 Acceptance: two independent chats survive reload/restart; mocked replies stream incrementally; AI failure preserves user text; tests assert full history. Live smoke tests are opt-in, synthetic, and budgeted.
 
@@ -43,7 +63,8 @@ Acceptance: a spoken turn becomes a durable timestamped message and streaming re
 
 ## M3 — Daily reports/archive (v1)
 
-- [ ] Add date picker/Generate report action with progress, errors, and empty-day states.
+- [x] Add calendar date selection, selected-day activity/empty states, and static summary metadata in the Journal mock UI.
+- [ ] Add Generate report action with progress, errors, and backend empty-day handling.
 - [ ] Snapshot selected-day messages across conversations using IANA local-day UTC bounds; test DST, midnight, cross-midnight replies, and ordering.
 - [ ] Produce Markdown summary/highlights, distinguishing user facts from AI suggestions. Exclude unfinished replies/report outputs; retain source links/cutoff.
 - [ ] Never silently omit inputs. Define/test context budgets and coverage-preserving chunk/synthesis if needed; otherwise fail clearly without saving partial coverage as complete.

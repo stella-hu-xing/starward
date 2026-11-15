@@ -23,7 +23,7 @@ Run from the repository root:
 | pnpm typecheck | Server then web TypeScript checks; report any failures |
 | pnpm typecheck:web | Web-only check; not a substitute for checking the backend |
 | pnpm lint | ESLint over the repository |
-| pnpm test | Vitest; existing health test is an assertion placeholder, not endpoint coverage |
+| pnpm test | Vitest; 12 calendar helper tests plus one placeholder health assertion, not endpoint coverage |
 | pnpm build:web | Build static UI into dist/web |
 | pnpm build | Build UI then compile server; does not prove startup works |
 | pnpm start | Intended built-server command; not a working backend guarantee |
@@ -48,7 +48,9 @@ Local data, SQLite WAL files, snapshots, and credentials stay outside Git. Use a
 
 Run pnpm typecheck, pnpm lint, pnpm test, and pnpm build for implementation work; verify the relevant frontend build for docs-only work too. Report pre-existing blockers separately, without calling a failing check successful. Consult milestone acceptance checks before marking a feature complete.
 
-Required future coverage: real HTTP health/startup, migrations/repositories, session protection, saved message before provider failure, streamed completion/interruption/retry, transcription limits/cleanup, local-day DST boundaries, report all-conversation coverage/revisions/empty days/provider failures, safe Markdown, and mobile UI at 375px. Mock providers; live API smoke tests are separate opt-in work using non-sensitive data and an explicit cost budget.
+Completed mock UI checks (2026-11-15): 12 calendar helper tests cover day keys, UTC-to-local conversion around DST, month arithmetic/grids, cross-chat grouping, unfinished-assistant exclusion, empty data/months, and labels. Full typecheck, lint, all 13 tests, and frontend build passed. Headless Chrome checks at 320, 375, 430, 768, and 1280px widths plus phone landscape found no document horizontal overflow and kept the composer visible; drawer/New chat dismissal and dark-mode colors were also checked. Physical-device keyboard/notch behavior and visual acceptance remain pending.
+
+Required future coverage: real HTTP health/startup, migrations/repositories, session protection, saved message before provider failure, streamed completion/interruption/retry, transcription limits/cleanup, backend local-midnight UTC bounds and report snapshots/revisions/empty days/provider failures, safe Markdown tests, and responsive acceptance of the integrated backend UI. Existing calendar tests do not verify backend report boundaries. Mock providers; live API smoke tests are separate opt-in work using non-sensitive data and an explicit cost budget.
 
 ## CI and deployment today
 
