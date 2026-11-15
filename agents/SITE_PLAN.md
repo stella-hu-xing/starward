@@ -1,119 +1,59 @@
-# stellahu.me Site Plan
+# stellahu.me personal-site plan (separate from the chat journal)
 
-> Status: planned, not started · Written 2026-11-15 · Owner: Stella
-> Companion docs: `agents/ARCHITECTURE.md` (app & backend design), `agents/DATA_MODEL.md` (SQLite schema/migrations), `agents/V0.md` (static v0 history)
+> Revised 2026-11-15. Site migration remains planned; historical observations below have not been rechecked during this documentation reset. This is not a prerequisite for local app v1.
 
-## Goal
+## Preserve the personal-site direction
 
-Restructure `stellahu.me` from a Hashnode blog into a personal site:
+- Use the existing Jekyll/Chirpy repository, stella-hu-xing.github.io, for the personal introduction, blog, and project list.
+- Replace the apex Hashnode site with that personal site when the owner carries out the migration.
+- Keep Porkbun as registrar. The prior Cloudflare Pages apex-domain plan moves DNS nameservers to Cloudflare, with records verified before any change.
+- Keep GitHub Pages available in parallel. Site deployment remains separately reviewed/manual; do not alter DNS or hosting in an app documentation task.
 
-| URL | Content | Source |
-|---|---|---|
-| `https://stellahu.me/` | Self-introduction / landing | Jekyll (Chirpy) |
-| `https://stellahu.me/blog` | Blog (posts archive) | Jekyll (Chirpy) |
-| `https://stellahu.me/projects/` | List of my apps/projects | Jekyll (new `_tabs/projects.md`) |
-| `https://stellahu.me/projects/starward/` | Starward PWA (notes / schedule / countdowns) | starward repo, built with `VITE_BASE=/projects/starward/` |
-| `https://www.stellahu.me/*` | 301 → apex | Cloudflare redirect rule |
-| `https://starward.stellahu.me` | 301 → `/projects/starward/` (or delete) | Cloudflare |
-
-One Cloudflare Pages project (`stellahu-me`) serves everything: the Jekyll build output,
-plus the starward web build copied under `_site/projects/starward/`.
-
-## Current state (diagnosed 2026-11-15)
-
-- DNS hosted at **Porkbun** (NS: `salvador/fortaleza/maceio/curitiba.ns.porkbun.com`).
-  No MX records on `stellahu.me` — no email to break.
-- `stellahu.me` apex → `A 76.76.21.21` (Vercel) = **Hashnode blog**. `www` → CNAME `hashnode.network`.
-  Both to be removed.
-- `starward` CNAME → `starward-3pw.pages.dev` exists but is **dangling**: the custom domain was
-  never added in the Pages project, so Cloudflare's edge drops TLS for that SNI (verified:
-  handshake fails, no certificate served).
-- Starward Pages project: `starward-3pw` (Direct Upload via GitHub Actions, manual dispatch +
-  `production` environment approval).
-- Starward app: Vite + React PWA (`vite-plugin-pwa`), **no client router** (screens switch via
-  `useState`), v0 web build makes **no API calls** (Hono backend exists in `src/server/` but is
-  not deployed). Deployed artifact = `dist/web/`.
-- Jekyll site repo: `github.com/stella-hu-xing/stella-hu-xing.github.io` (Chirpy theme,
-  `baseurl: ""`, `_tabs/`: about / archives / categories / tags, `_posts/` empty, GitHub Pages
-  via `pages-deploy.yml`). Stays live on `stella-hu-xing.github.io` in parallel.
-
-## Decisions (2026-11-15)
-
-| Decision | Reason |
+| Intended URL | Purpose |
 |---|---|
-| Drop Hashnode from the apex; blog self-hosts on Jekyll/Chirpy | `_posts` is empty; no content to migrate; one less third party |
-| Reuse the Jekyll repo as the `stellahu.me` site repo (name unchanged) | `<name>.github.io` must match the GitHub username anyway; GH Pages + Cloudflare Pages coexist from one repo |
-| Merge the starward web build into the site deploy (one artifact) | Pages deploys are atomic — all paths must ship together; avoids proxy/redirect hacks |
-| Rebuild starward with `base: '/projects/starward/'` via env var | Required for asset URLs + PWA scope under a sub-path |
-| Keep Porkbun as registrar; move only DNS (nameservers) to Cloudflare | Cloudflare Pages apex custom domains require the zone on Cloudflare |
+| https://stellahu.me/ | Personal landing/introduction |
+| https://stellahu.me/blog | Blog or mapping to the posts archive; exact layout undecided |
+| https://stellahu.me/projects/ | Project descriptions and links |
+| Existing GitHub Pages URL | Independent personal-site fallback |
 
-## Plan
+## Superseded app assumptions
 
-### Phase 1 — starward repo: base-path support
-- [ ] `vite.config.ts`: `base: process.env.VITE_BASE ?? '/'`; PWA manifest `scope` / `start_url`
-      derive from base; base-prefix icon `src` paths (`icon-192.png`, `icon-512.png`).
-- [ ] Local check: `VITE_BASE=/projects/starward/ pnpm build:web`, then assert
-      `dist/web/index.html` references `/projects/starward/assets/...`, manifest
-      `scope: "/projects/starward/"`, `sw.js` served at `/projects/starward/`.
-- [ ] Keep plain `pnpm build:web` (no env) working — local dev and root parity.
-- [ ] Retire `starward/.github/workflows/deploy.yml` (the site repo deploys it); keep `ci.yml`.
+The earlier plan combined the entire Starward notes/schedule/countdown PWA into the Jekyll build under /projects/starward/. That coupling is no longer the app plan. The three tools are separate products; this repository first builds a local AI chat journal with a Node/SQLite backend.
 
-### Phase 2 — Jekyll site repo
-- [ ] `_config_stellahu.yml`: `url: "https://stellahu.me"` (used only in the Cloudflare build via
-      `--config _config.yml,_config_stellahu.yml`).
-- [ ] `_tabs/projects.md`: project list (starward → `/projects/starward/`; switch-jobs-engine;
-      sh-learning-notes; easier-life-cap; this site).
-- [ ] `/blog` mapping: redirect to the Chirpy posts/archives tab (or add a Blog tab) — pick at
-      implementation time.
-- [ ] New workflow `.github/workflows/deploy-stellahu.yml`: checkout both repos → build starward
-      (`VITE_BASE=/projects/starward/`) → `jekyll build` with the override config → copy
-      `starward/dist/web/*` → `_site/projects/starward/` → `wrangler pages deploy _site
-      --project-name=stellahu-me` (manual dispatch + `production` approval, mirroring starward's
-      pattern; secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`).
+- Do not require cross-repository checkout, copying the app build into the blog artifact, or VITE_BASE=/projects/starward/ as part of chat-journal v1.
+- The project list may describe the chat journal without publicly exposing its UI or API. Link to separate schedule/countdown apps only when they exist.
+- Local v1 has no chosen public app URL. A public static frontend alone cannot run Claude/STT proxying, SQLite, or scheduled reports.
+- If independent PWAs are hosted together later, each needs its own identity/start URL/scope/service worker, without swallowing sibling paths. Choose subpaths vs subdomains at that time, not now.
+- One shared Node backend could serve multiple frontends later; three app identities do not imply three servers. No future backend sharing is implemented or required here.
 
-### Phase 3 — dashboards (order matters)
-- [ ] Cloudflare: add zone `stellahu.me` (Free plan), let it import existing records. Note the
-      2 assigned nameservers.
-- [ ] Porkbun: replace the 4 NS with the 2 Cloudflare NS. Wait for zone status **Active**.
-- [ ] Cloudflare zone SSL/TLS: **Full (strict)**.
-- [ ] Cloudflare Pages: create project `stellahu-me` (Direct Upload) → Custom domains: attach
-      `stellahu.me` (zone is on-account → automatic flattened CNAME + cert) and `www.stellahu.me`
-      if desired.
-- [ ] Cloudflare DNS: delete `A stellahu.me → 76.76.21.21` and `CNAME www → hashnode.network`
-      (Pages entries replace them); decide the `starward` CNAME (delete, or keep + 301 rule →
-      `/projects/starward/`).
-- [ ] Cloudflare Redirect rule: `www.stellahu.me/*` → `https://stellahu.me/$1` (301).
-- [ ] Hashnode: remove the `stellahu.me` mapping (blog retires or moves to `blog.stellahu.me` —
-      open question).
-- [ ] First deploy via the new workflow.
+## Historical observations (2026-11-15, prior site plan)
 
-### Phase 4 — verification
-- [ ] `dig stellahu.me` resolves to the Pages edge; TLS cert serves for `stellahu.me`.
-- [ ] `/`, `/blog`, `/projects/`, `/projects/starward/` all return 200; `www` 301s;
-      `starward.stellahu.me` 301s (if kept).
-- [ ] Starward PWA: manifest loads at `/projects/starward/manifest.webmanifest`,
-      `scope: "/projects/starward/"`, service worker registers, icons resolve, all five
-      screens navigate.
-- [ ] GH Pages `stella-hu-xing.github.io` still builds and serves (untouched by this plan).
-- [ ] Old `starward-3pw.pages.dev` URL behavior confirmed (retire or keep as preview).
+These are records, not current uptime/DNS guarantees:
 
-## V1 flags (do not act now)
-- When the Hono backend ships, the PWA must call an **absolute** API origin — relative `/api/*`
-  under `/projects/starward/` would hit the site project and 404. Plan: `app.stellahu.me` (or
-  `api.`) → Caddy VM per `agents/ARCHITECTURE.md`. Wire as env (`VITE_API_BASE`) at that time.
-- Notes / schedule / countdowns persistence is backend work (see `agents/ARCHITECTURE.md` and
-  `agents/DATA_MODEL.md`), not site work.
+- Porkbun nameservers were salvador/fortaleza/maceio/curitiba.ns.porkbun.com; no MX records were observed.
+- Apex A record pointed to 76.76.21.21 (Hashnode/Vercel); www CNAME pointed to hashnode.network.
+- starward CNAME pointed to starward-3pw.pages.dev, but its custom-domain attachment/TLS was not working in that diagnosis.
+- The existing Starward workflow uploads dist/web to a Cloudflare Pages Direct Upload project; it does not deploy a Node backend.
+- The Jekyll repo used Chirpy, empty baseurl, about/archives/categories/tags tabs, and no posts at the time of inspection.
 
-## Open questions
-- [ ] Front page: Chirpy default (recent posts) vs a custom intro-first landing — customize
-      during implementation?
-- [ ] Hashnode: fully retire, or park at `blog.stellahu.me` as an archive?
-- [ ] Retire the `starward-3pw` Pages project once `stellahu-me` is live, or keep as preview?
+Recheck all records, mail settings, content, workflows, and domain attachments before acting. Do not delete a DNS record on the strength of this historical note alone.
 
-## Rollback
-- DNS: reverting nameservers at Porkbun restores full control; re-adding the `A` / `www`
-  records brings back the Hashnode blog.
-- Pages: previous deploys remain reachable on `*.pages.dev` URLs; the GH Pages site is never
-  touched by this plan.
-- Starward: `VITE_BASE ?? '/'` default means local dev and any root-hosted fallback behave
-  exactly as today.
+## Site-only migration checklist (deferred)
+
+- [ ] Inspect the Jekyll repo and verify its current instructions/content before edits.
+- [ ] Decide introduction-first landing vs Chirpy defaults, blog mapping, and project descriptions. Add a Cloudflare-specific URL config without breaking GitHub Pages.
+- [ ] Build/deploy the personal site independently to Cloudflare Pages (the previous proposed project name was stellahu-me). Do not bundle private app data or credentials.
+- [ ] Export/review existing DNS, especially mail, before changing nameservers. Add/activate the Cloudflare zone while keeping Porkbun as registrar.
+- [ ] Attach apex/www custom domains and verify TLS. Replace Hashnode records only after the site is ready; redirect www to apex if desired.
+- [ ] Decide whether Hashnode retires or remains as an archive, and whether the old starward Pages project/subdomain is retained, redirected, or removed. Do not redirect it to an unbuilt /projects/starward/ path.
+- [ ] Verify landing/blog/projects, redirects, certificates, and independent GitHub Pages availability. Keep previous Pages deploys and a tested DNS rollback record.
+
+## Open decisions
+
+- Personal-site content/layout and blog archive route.
+- Hashnode archive policy; existing Starward static-preview retirement.
+- Future app public hosting, access security, URL structure, and optional shared backend; none blocks local chat-journal v1.
+
+## Rollback notes
+
+Retain a DNS export and nameserver history before migration. Restore prior site records/deploy if necessary, accounting for propagation; nameserver changes alone are not an instant guaranteed rollback. Keep GitHub Pages independent. No database migration or chat-journal deployment belongs to this site procedure.

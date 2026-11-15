@@ -1,115 +1,51 @@
-# AGENTS.md
+# Agent instructions
 
-Instructions for coding agents working in this repository. Read `README.md`, all files in the `agents/` folder before making changes.
+Read the README and every document in the agents directory before changes. The README defines scope; the implementation plan defines milestones and open decisions. These replace the old combined-assistant/static-only v0 rules.
 
-## Stack (fixed unless the owner changes it)
+## Product boundary
 
-- Language: TypeScript, `strict: true` in all packages.
-- Runtime: Node.js 22 LTS.
-- Backend: Hono, served from one Node process.
-- Frontend: React + Vite, built as a PWA (manifest and service worker via `vite-plugin-pwa`). Built files are served by the same Hono process.
-- Database: SQLite via `better-sqlite3`, with FTS5. Access only through the repository layer in `src/db/`.
-- Validation: Zod. Every external input and every LLM output is validated with a Zod schema.
-- LLM: OpenRouter through the `openai` SDK with `baseURL: https://openrouter.ai/api/v1`. Models are configured by slug in config, never hard-coded in feature code.
-- Google: `googleapis` package, OAuth 2.0, scopes `calendar.readonly` and `gmail.readonly`.
-- Scheduling: `node-cron`, in-process.
-- Tests: Vitest. Frontend component tests optional in v1.
-- Packaging: Docker, with `docker-compose.yml` running the app and Caddy as the reverse proxy.
-- Package manager: pnpm. Use a monorepo layout only if it stays simple; a single package with `src/server` and `src/web` is the default.
+- Build one personal AI chat journal: text or push-to-talk conversation, followed by saved daily Markdown reports.
+- v1: streaming chat, durable history, clip transcription, on-demand reports, report archive, one local login, responsive UI.
+- v1.5: scheduled reports, tags, message search. Later: continuous voice, PDF/email, explicit report-derived memory.
+- Schedules and countdowns were removed from this repository on 2026-11-15 and will be moved to another project; do not add schedule/countdown features, calendar/email/ICS integrations, or a combined dashboard here. Also do not implement MCP, vector search, multi-user, billing, or model training.
+- These docs describe a target, not completed functionality. Do not describe scaffold placeholders as working features.
 
-## Repository layout (target)
+## Stack and layout
 
-```
-personal-hub/
-  AGENTS.md
-  README.md
-  agents/
-  config/
-    tags.json               # fixed tag vocabulary
-    models.json             # OpenRouter model slugs per task
-    gmail-filter.json       # Gmail query for event extraction
-  src/
-    server/
-      index.ts              # app entry, mounts routes and static files
-      routes/               # notes, events, countdowns, inbox, auth, sync, export
-      services/             # business logic, no HTTP types here
-      ai/                   # ALL LLM calls live here
-      integrations/         # google.ts, ics.ts, s3.ts
-      jobs/                 # cron jobs: gcal-sync, gmail-scan, backup, digest
-      db/                   # connection, migrations, repositories
-      lib/                  # dates.ts, timezone helpers, errors, logger
-    web/                    # React PWA
-  migrations/               # numbered SQL files, applied at startup
-  tests/
-  Dockerfile
-  docker-compose.yml
-  Caddyfile
-  .env.example
-```
+- Strict TypeScript; Node.js 22 LTS; pnpm pinned by package.json.
+- React + Vite. Existing PWA setup may be reused; offline AI/PWA polish are not v1 requirements.
+- One local Hono Node server serves API and built UI. No three-server split or separate worker service.
+- SQLite through better-sqlite3; database access only through repositories in src/server/db/.
+- Zod validates external input, provider event envelopes, and structured output. Streamed chat and Markdown reports are text, not JSON extraction output.
+- Runtime chat/report provider: direct Claude API, replacing the OpenRouter/openai scaffold. Select the Anthropic integration and speech-to-text provider in M0; do not claim their SDKs are installed.
+- Vitest tests. Check dependencies and the plan before adding libraries; ask before introducing additional services. Scheduling belongs to v1.5.
 
-## Commands
+Server folders: routes/ for HTTP/streaming transport; services/ for business logic; ai/ for all provider calls and versioned prompts; db/ for connection/migrations/repositories; lib/ for dates/errors/logging; jobs/ only for v1.5. UI stays in src/web/, SQL in migrations/. Prefer explicit functions over generic frameworks.
 
-- `pnpm install`
-- `pnpm dev`: runs the server and the Vite dev server with hot reload
-- `pnpm build`: builds the web app and compiles the server
-- `pnpm test`: runs Vitest
-- `pnpm typecheck`: `tsc --noEmit` for all code
-- `pnpm lint`: must pass before a task is considered done
-- `pnpm db:migrate`: applies pending migrations
-- `pnpm eval:ai`: runs extraction fixtures in `tests/fixtures/ai/` against configured models
+## Required behavior
 
-Do not mark a task complete unless `typecheck`, `lint`, and `test` pass.
+- Reconstruct full current-conversation history from SQLite. Browser-supplied history is not authoritative. No silent truncation, chat summarization, unrelated conversations, or report-memory injection in v1.
+- Save user messages before provider calls. Record assistant completion/interruption/failure; preserve partial text and make retries idempotent. Interrupted text is not complete model history.
+- Push-to-talk uses a temporary audio clip. Validate configured size/type/duration limits; release buffers/temp files on success, failure, or cancellation. No permanent audio archive or audio logging.
+- Report boundaries use an explicit IANA timezone and [local midnight, next local midnight), converted to UTC. Never assume 24 hours or the host's implicit timezone.
+- Reports cover all eligible messages that day across conversations from a fixed snapshot. Summary/highlights distinguish owner statements from AI suggestions. Do not invent facts.
+- Never truncate report inputs silently. Validate nonempty Markdown before saving. Regeneration creates a revision; failure preserves saved reports. Empty days need no AI call.
+- A future scheduler calls the report service, not a public cron endpoint. It needs an awake, running server; define duplicate prevention and missed runs before v1.5.
 
-## Conventions
+## Privacy and security
 
-- Put business logic in `services/`. Route handlers only parse input, call a service, and return output.
-- Put every LLM call in `src/server/ai/`. Each call has: a prompt template file with a version string, an input builder, a Zod output schema, and a function that returns a typed result or a typed error. No LLM calls from routes or jobs directly.
-- LLM output that fails Zod validation must not be written to domain tables. Store it in an `ai_failures` table for review, and surface a readable error.
-- All timestamps are stored as UTC ISO-8601 strings with the user's IANA timezone stored alongside when relevant. Convert to local time only in the UI or in `lib/dates.ts`.
-- Date phrases from the LLM ("next Tuesday") are resolved by deterministic code in `lib/dates.ts` using an explicit anchor date and timezone. Never let the model compute absolute dates.
-- Never store Gmail message bodies. Store only the metadata listed in `agents/DATA_MODEL.md`.
-- Secrets come from environment variables only. Never commit `.env`. Add any new variable to `.env.example` with a comment.
-- Log through `lib/logger.ts`. Never log email bodies, OAuth tokens, or full prompts containing personal content.
-- Migrations are append-only. Never edit an applied migration; add a new one.
-- Prefer small, explicit functions over clever abstractions. No generic "repository framework".
-- Chinese text must work everywhere: UTF-8 in the database, FTS search tested with Chinese input, UI fonts that render Chinese.
+- Bind to loopback by default. Public hosting or LAN exposure needs a reviewed security decision.
+- One local login; no registration. Protect private APIs, streams, and uploads. Only login/minimal health endpoints are exempt. Use password hashing, hashed session tokens, HttpOnly/SameSite cookies, origin/CSRF checks, and rate limits; never invent cryptography.
+- Keys stay server-side, never in bundles or VITE-prefixed variables. Do not read/commit .env secrets; use .env.example for names only.
+- Log operational metadata only: model, prompt version, timing, usage, sanitized error category. Never log chat/transcripts/audio/reports, raw prompts/provider errors, credentials, or session tokens.
+- Render Markdown safely: no unsanitized HTML or unsafe URLs. No private API service-worker caching by default.
+- UTF-8 throughout. Test English, Chinese, and mixed text; test short Chinese searches in v1.5.
 
-## Rules for changes
+## Workflow and completion
 
-- Do not add new services, databases, or hosted dependencies without asking the owner first. Free-tier-first applies.
-- Do not change the stack in this file without asking.
-- Do not implement Outlook, audio storage, multi-user support, billing, or vector search. They are out of scope for v1.
-- If a requirement is ambiguous, check `agents/V0.md` for the defined v0 boundary. If the request falls inside v0, apply the documented scope; if it requires backend work, it is v1+ and goes to `agents/PLAN.md` open questions.
-- Do not add backend code, Dockerfile, docker-compose.yml, Caddyfile, VM infra, database migrations, auth, API routes, or feature integrations in v0. Those are deferred to later milestones.
-- Record any default taken for an open question in `agents/PLAN.md` under "Decisions made during build" with the date and reason.
-- Keep commits focused: one milestone task per commit, with a message that names the milestone (for example `M1: add FTS search for notes`).
-
-## Security rules
-
-- Single-user auth. Every `/api` route requires an authenticated session except the login and health endpoints.
-- Google refresh tokens are encrypted with AES-256-GCM using `TOKEN_ENCRYPTION_KEY` from the environment. Never store them in plain text.
-- Webhook-style or cron endpoints must not be publicly callable. Cron runs in-process.
-- Validate all uploaded `.ics` files for size (max 2 MB) and content type before parsing.
-
-## Rules for automated agents (CI and phone-triggered)
-
-These rules apply when an agent runs from `agent.yml` on an issue, in addition to everything above.
-
-- In build mode, work only on the branch `agent/<issue-number>`. Never push to `main`, never force-push, never modify branch protection.
-- Do not change `.github/workflows/`, `Dockerfile`, `docker-compose.yml`, `Caddyfile`, or anything that reads or writes secrets, unless the issue explicitly asks for it and the PR is labelled `needs-laptop-review`.
-- Do not add or read `.env` values, tokens, or keys. Use environment variable names from `.env.example` only.
-- Do not add telemetry that includes personal content. Follow the privacy rules in `agents/ARCHITECTURE.md`.
-- Keep each change to one milestone task. If the issue spans several tasks, do the first and note the rest in the PR description.
-- Run `pnpm typecheck && pnpm lint && pnpm test` before opening the PR. If tests fail after one retry, stop and comment on the issue with the failure summary.
-- Open a draft PR. Do not mark it ready for review.
-- Record the model slug and approximate token usage in the PR description.
-- Each run is a new session. Before changing anything, read the full issue thread, the PR review comments, and the PR description's "Decisions" section. Treat those as the source of truth for what was agreed.
-- In discuss mode, you may only read the repo and comment on the issue. Do not create branches, commit, or open PRs. Propose a plan, state trade-offs, and ask questions as needed. Do not guess the owner's intent.
-- Move to build mode only when the owner has commented `/go`. Never start building on your own judgement.
-- When an owner comment changes a decision, update the PR description's "Decisions" section in the same run.
-
-## Done means
-
-- The feature works in the browser on a mobile viewport (375px wide).
-- It is covered by tests at the service level.
-- It is listed in the milestone's acceptance checklist in `agents/PLAN.md`, and that checklist is ticked.
+- Record choices/assumptions with date and reason in the implementation plan. Ask about unresolved material product/provider decisions; do not invent infrastructure requirements.
+- Preserve data. Never edit applied migrations or reset databases without approval. Audit migration state before replacing the incomplete legacy schema.
+- Keep changes focused. No push, deploy, secret change, or protection change without instruction. Plan/read-only interactions do not authorize edits.
+- Review the diff; run pnpm typecheck, pnpm lint, pnpm test, and the relevant build. Report failures honestly, including pre-existing blockers; do not silently expand scope to fix them.
+- Test service logic with temporary real SQLite databases and mocked providers. No paid/live API calls in ordinary tests.
+- Feature completion requires acceptance checks, failure-path tests, and a browser check at 375px. Check off only verified items. Documentation-only work requires link/scope checks and does not imply features work.

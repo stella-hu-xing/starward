@@ -1,168 +1,90 @@
-# Architecture
+# Architecture — AI chat journal
 
-## Overview
+> Target design, 2026-11-15. Not implemented by the current scaffold. See the implementation plan for sequencing.
 
-One Node.js process serves the API and the built PWA on one origin. A reverse proxy terminates HTTPS. SQLite stores all structured data. Background jobs run in the same process on cron schedules. External calls go to Google APIs, OpenRouter, and S3.
+## One app, one local server
 
-```
-Phone (Home Screen PWA)
-   │  https://app.stellahu.me
-   ▼
-Caddy (reverse proxy, automatic HTTPS)
-   │
-   ▼
-App container (Node 22)
-   ├── Static PWA (Vite build)
-   ├── /api/* (Hono)
-   │     ├── auth        session login, passkey or password+TOTP (see open questions)
-   │     ├── notes       capture, tag suggest, search, edit, delete
-   │     ├── events      manual, ICS import, candidates inbox
-   │     ├── countdowns  CRUD and computed display values
-   │     ├── sync        manual trigger for Google Calendar sync
-   │     └── export      Markdown bundle download
-   ├── /mcp (phase M7, read-only, bearer token)
-   ├── Jobs (node-cron)
-   │     ├── gcal-sync     every 15 min
-   │     ├── gmail-scan    every 30 min
-   │     ├── digest        daily, morning, user timezone
-   │     └── backup        nightly: DB snapshot + Markdown export to S3
-   └── SQLite file (/data/hub.db) with FTS5
-          │
-          └── backups to S3 bucket (configured via env)
+```text
+React + Vite browser UI
+   | same-origin JSON, multipart audio, streamed events
+   v
+Local Node.js 22 + TypeScript + Hono (loopback)
+   |-- routes: local login, conversations, chat, transcription, reports
+   |-- services: durable chat, report snapshots, archive
+   |-- ai: Claude streaming/report prompts; speech-to-text adapter
+   |-- db: repositories -> better-sqlite3 -> local SQLite file
+   |-- built frontend files
+   `-- v1.5 in-process scheduler -> report service
 
-External: Google Calendar API, Gmail API, OpenRouter (LLM), S3, Web Push services
-DNS: app.stellahu.me → host IP (A record at the DNS provider of the domain)
+External calls: Claude API and a speech-to-text API
 ```
 
-## Deployment
+Keep the existing React/Vite/Hono/Zod/SQLite/Vitest stack. Use direct Claude API access instead of the legacy OpenRouter runtime design. The Claude integration and STT provider/model/limits must be selected in M0 before dependencies or credentials change. No external queue, database server, worker app, or three separate Node services.
 
-### V0 (completed in `agents/V0.md`)
-Static frontend on Cloudflare Pages via GitHub Actions Direct Upload. No VM, Docker, Caddy, GCP, or backend. Deploy workflow documents this path. Domain `app.stellahu.me` attached to Pages; CNAME at Porkbun. Secrets in GitHub Actions secrets only.
+Development uses Vite with an /api proxy to the local backend; the built app uses one origin. Both dev and backend listeners should be loopback-only. The existing dev:web command binds all interfaces and must change during M0 before sensitive content is used.
 
-### V1 (planned)
-Target host: any Linux VPS with Docker. For M0, resolved to Google Cloud Compute Engine `e2-micro` (free-tier eligible), in the region chosen under `agents/PLAN.md` Q11 (default applied: `us-west1`); see `agents/PLAN.md` Q1. Keep deployment identical across hosts. Host choice is now resolved, not pending.
+## HTTP surface (planned)
 
-- `docker-compose.yml` defines two services:
-  - `app`: built from the `Dockerfile`, exposes port 3000 internally, mounts `./data:/data` for the SQLite file.
-  - `caddy`: official Caddy image, ports 80 and 443, reverse-proxies `app.stellahu.me` to `app:3000`, automatic certificates.
-- Persistent data: `./data/hub.db` (database) and `./data/backups/` (local snapshot staging). Both are included in host backups.
-- Updates: `git pull && docker compose up -d --build`. Migrations run at app startup.
-
-## Dockerfile expectations
-
-- Multi-stage build: install and build in a builder stage, copy only compiled `dist/`, production `node_modules/`, `migrations/`, `config/`, and server-side prompt templates into the runtime image. Runtime secrets come from environment variables; config and prompts are non-secret build inputs.
-- Base image: `node:22-slim`.
-- Run as a non-root user.
-- Health endpoint at `/api/health`.
-
-## Caddyfile (intent)
-
-```
-app.stellahu.me {
-  encode zstd gzip
-  reverse_proxy app:3000
-}
-```
-
-## Configuration (environment variables)
-
-All variables are listed in `.env.example`.
-
-| Variable | Purpose |
+| Route | Responsibility |
 |---|---|
-| `APP_BASE_URL` | `https://app.stellahu.me` |
-| `SESSION_SECRET` | signs session cookies |
-| `OWNER_EMAIL` | the single allowed user identity for login |
-| `AUTH_MODE` | `passkey` or `password_totp` (pending decision) |
-| `OPENROUTER_API_KEY` | LLM access |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | OAuth |
-| `TOKEN_ENCRYPTION_KEY` | 32-byte key, base64, for encrypting refresh tokens |
-| `TIMEZONE` | default IANA timezone, e.g. `Australia/Melbourne` |
-| `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT` (optional) | backups |
-| `BACKUP_RETENTION_COUNT` | default `30` |
-| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Web Push |
-| `MCP_BEARER_TOKEN` | auth for the MCP endpoint (phase M7) |
-| `DATA_DIR` | default `/data` |
+| POST /api/login, POST /api/logout, GET /api/session | Single local owner session; no registration |
+| GET /api/health | Minimal liveness, no private data |
+| POST /api/conversations, GET /api/conversations | Start/list conversations |
+| GET /api/conversations/:id/messages | Reload durable ordered history |
+| POST /api/chat | Accept conversation ID, client request ID, message; stream typed events |
+| POST /api/transcribe | Bounded multipart audio upload; return transcript |
+| POST /api/report | Selected local date/timezone; generate or explicitly regenerate |
+| GET /api/reports, GET /api/reports/:id | Archive and saved Markdown/revision metadata |
 
-Non-secret model choices live in `config/models.json`:
+Transport details are proposed contracts, to finalize with tests. Streaming uses fetch POST plus an SSE-formatted response: durable message IDs, text deltas, completion, sanitized error. Do not put message text in URLs. Only login and minimal health are unauthenticated; session inspection returns an unauthenticated status without private data.
 
-```json
-{
-  "tags": "<openrouter model slug, cheap>",
-  "dateResolution": "<openrouter model slug, cheap>",
-  "emailExtraction": "<openrouter model slug, stronger>"
-}
-```
+## Chat flow
 
-Fill in the slugs during M1 after testing against the owner's examples.
+1. Validate session, origin, input, conversation ID, and idempotency key.
+2. Persist the user message and create its assistant attempt before contacting Claude. Allow only one active turn per conversation; duplicate submissions must not create duplicate user messages.
+3. Load the full current conversation in stable sequence, including the new user message and only complete assistant replies. Failed/interrupted assistant attempts stay visible but are excluded from model history. Never mix other conversations into v1 context.
+4. Send history plus a versioned system prompt through the server-side Claude adapter. Model IDs are configurable, not scattered through feature code. No report-memory injection in v1.
+5. Stream deltas and checkpoint assistant text with bounded writes. Finalize complete only on a successful provider finish; mark disconnect, cancellation, timeout, or process-recovery interruptions explicitly.
+6. Preserve the user message and any partial reply on failure. Retry references the existing turn and adds an assistant attempt, not duplicate user text. Show context-limit errors without silently truncating/summarizing history.
 
-## Key flows
+## Push-to-talk flow
 
-### Note capture
-1. Client POSTs text to `/api/notes`.
-2. Service stores the note immediately (untagged, status `draft`).
-3. Service calls `ai/suggestTags`. On success, returns suggestions in the response; client shows them.
-4. Client POSTs confirmed tags to `/api/notes/:id/tags`. Only tags in `config/tags.json` are accepted.
-5. If the note contains a date phrase, `ai/extractDatePhrase` returns it; `lib/dates.ts` resolves it; client confirms.
+Microphone gesture -> record temporary clip -> stop -> upload -> STT -> transcript -> normal chat submission, source=voice. No recording occurs without permission; show recording/transcribing/sending/error states. A denied microphone must not block text chat. Keyboard dictation is ordinary text because the app cannot identify it reliably.
 
-Note: the note is saved before AI runs, so an AI outage never loses content.
+Choose provider-supported browser formats (including the target mobile browser), maximum bytes/duration, timeout, and English/Chinese support in M0. Do not trust MIME labels alone. Dispose of audio buffers/temp files on every exit path; never archive audio. A transcription failure must not create an empty chat message. If chat submission fails after transcription, retain the transcript for retry.
 
-### Gmail event extraction
-1. `gmail-scan` job lists messages matching `config/gmail-filter.json` newer than the last scan cursor.
-2. For each new message id not already in `email_scans`, fetch subject, sender, date, and plain-text body.
-3. Call `ai/extractEvents` with the fields above. Output validated against the event candidate schema.
-4. Each candidate becomes an `events` row with `status = candidate`, `source = gmail`, and `source_id` pointing at the message id.
-5. Record the message id in `email_scans` regardless of result, so messages are not reprocessed. Failed extractions are recorded with `status = failed` and retried at most twice.
-6. Discard the body from memory after the call. Do not persist it.
+## Report flow
 
-### Google Calendar sync
-1. `gcal-sync` loads the stored `syncToken` (if any) and calls `events.list` with `singleEvents=true`.
-2. Upserts events by `(source='gcal', source_id)`. Cancelled events are soft-deleted.
-3. On HTTP 410, clears the token and does a full sync.
-4. Stores the new `syncToken`.
+1. Validate selected YYYY-MM-DD and IANA timezone. Compute UTC start/end from consecutive local midnights, including DST changes.
+2. Snapshot that day's user messages and complete assistant messages across conversations. Record source IDs, ordering, cutoff, and excluded unfinished reply count. Do not substitute whole conversations just because they started that day.
+3. Empty input returns an empty state without a provider call. Otherwise ask Claude for Markdown with a summary and highlights, preserving conversation attribution and uncertainty. User content is evidence, not instructions overriding the report prompt.
+4. Include all eligible input. If a day's input exceeds the report context budget, use tested coverage-preserving chunk summaries and synthesis with provenance, or fail clearly without saving a partial report as complete.
+5. Validate nonempty Markdown and save report plus source links atomically. Regeneration creates a revision only on success; preserve earlier versions on all failures.
+6. Render safely in the archive. Reports are app data, not appended chat messages; they do not feed back into their own source or future chats in v1.
 
-### ICS import
-1. User uploads `.ics` (max 2 MB).
-2. Parse with an ICS library (`ical.js` or `node-ical`; pick one and record the choice in `agents/PLAN.md`).
-3. Each VEVENT becomes an event with `source = ics`, `status = confirmed`, `source_id = UID`. Re-import upserts by UID.
+Reports for today are snapshots, including scheduled reports at 21:00. Later messages require regeneration; show generated time and coverage cutoff.
 
-### Countdown display
-Computed on the server for the card (days, and years/months/days for "since"), using the stored timezone. Client renders. Logic lives in `lib/dates.ts` and is unit-tested.
+## Scheduling and archive (v1.5)
 
-### Nightly backup
-1. Create a consistent snapshot of `hub.db` with SQLite's online backup API.
-2. Upload snapshot to `s3://<bucket>/db/YYYY-MM-DD.db`.
-3. Export all non-deleted notes as Markdown with frontmatter to `s3://<bucket>/notes/` (one file per note, filename from creation timestamp and id).
-4. Prune snapshots older than `BACKUP_RETENTION_COUNT`.
-5. Log success or failure. A failed backup must surface on the next app load as a visible warning.
+Use a small in-process scheduler (node-cron is a candidate, not currently installed). Invoke the report service directly, not a self-HTTP call or public cron route. Configure IANA timezone and local run time. Persist a daily job key so restarts/DST/manual generation cannot accidentally duplicate scheduled reports. Explicit regeneration remains possible.
 
-## Authentication
+The job cannot run while the computer sleeps or the server is stopped. Missed-run catch-up and duplicate policy must be resolved and tested before scheduling ships. No always-on hosting is implied. Tags/search are independent v1.5 migrations, not prerequisites for manual v1 reports.
 
-Single owner. Two candidate modes (decision pending):
+## Local security and privacy
 
-- **Passkey (WebAuthn)**: registered once on the owner's iPhone, works with Face ID. No passwords stored. Requires a recovery path, such as a second registered device or a one-time recovery code printed at setup.
-- **Password + TOTP**: a password hash (argon2id) and a TOTP secret for an authenticator app.
+- One owner credential, no signup. Select a maintained password-hashing implementation in M0; store only a salted password hash and hashed opaque session tokens. Cookies are HttpOnly and SameSite; use Secure when served over HTTPS. Enforce trusted origins/CSRF protection and rate-limit login and costly calls.
+- Bind to loopback and do not expose the scaffold directly. Remote mobile use requires a separate decision on HTTPS, authentication, and networking; browser recording needs a secure context (localhost or HTTPS).
+- Keep Claude/STT keys server-side. Only the current conversation goes to Claude for chat; report generation sends selected-day content across conversations; STT receives the temporary audio clip. Document provider data-handling/cost implications before use.
+- Escape/sanitize rendered Markdown and links. No raw HTML execution or default caching of private API/stream responses by the PWA service worker.
+- Logs contain task/model/prompt version/timing/token counts and safe error categories only. No message bodies, audio, transcripts, reports, prompts, raw provider errors, or credentials. No Honeycomb/OpenTelemetry service required.
+- SQLite and reports contain private plaintext; rely on local disk permissions/encryption and keep runtime data outside version control. Markdown is stored in SQLite as source text, not a required duplicate file tree. Use consistent local SQLite snapshots for backup/restore tests; no S3 integration is required.
 
-Either way: session cookie `HttpOnly`, `Secure`, `SameSite=Lax`, with sliding expiry of 30 days. CSRF protection on state-changing routes.
+## Configuration and implementation boundary
 
-## Observability
+Target configuration: loopback host/port, local data directory, owner password hash/session settings, IANA timezone, Claude key and configurable chat/report model IDs, STT key/model/format limits. v1.5 adds report time and schedule enablement. Finalize variable names and update .env.example with the implementation, without putting keys in VITE-prefixed variables.
 
-- OpenTelemetry Node SDK wired to Honeycomb (`HONEYCOMB_API_KEY`).
-- HTTP auto-instrumentation on; a `/api/health` span visible in Honeycomb.
-- Custom spans/metrics for LLM calls: model slug, prompt version, latency, token usage, cost if returned, success or validation failure.
-- No personal content in logs or traces; structured logs only through `src/server/lib/logger.ts`.
+The existing .env.example/config still advertise OpenRouter, S3, and other legacy settings; the Google Calendar/Gmail, web-push, and gmail-test entries were removed with the schedule/countdown content on 2026-11-15. What remains is not the target configuration. No provider SDK/scheduler/security dependency is added by this documentation change.
 
-## Security and isolation notes
+The old server entry does not start a working Node listener, database initialization is a stub, the migration is incomplete, and the health test is a placeholder. M0 must establish a real listener, SQLite setup, and reproducible checks before feature work.
 
-- Shared single VM: if the app and any process share the host, isolate credentials and limit process scope; do not treat a single user as a multi-tenant boundary.
-
-## Deployment safety
-
-- Migrations are append-only; never edit an applied migration, add a new one.
-- Rollback procedure for an older application version is a code checkout plus redeploy; database rollback is not automatic and requires a tested restore path.
-
-## Non-goals for architecture
-
-- No Kubernetes, no message queue, no separate worker process in v1. Cron in-process is enough.
-- No Redis. Session storage in SQLite.
-- No CDN. Static files are small and served from the same origin.
+The current Actions deploy uploads static files to Cloudflare Pages. It cannot run this local backend, persist SQLite, or schedule jobs. Docker/Caddy/GCP files are legacy scaffolding, not an approved hosting requirement. Public production deployment, domain assignment, containerization, and API-origin splitting are deferred; the personal-site plan remains independent.

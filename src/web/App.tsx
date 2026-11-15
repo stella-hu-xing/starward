@@ -2,12 +2,10 @@ import React from 'react';
 import Header from './components/Header';
 import HomeScreen from './screens/HomeScreen';
 import NotesScreen from './screens/NotesScreen';
-import ScheduleScreen from './screens/ScheduleScreen';
-import CountdownsScreen from './screens/CountdownsScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import { useState } from 'react';
 
-type Screen = 'home' | 'notes' | 'schedule' | 'countdowns' | 'settings';
+type Screen = 'home' | 'notes' | 'settings';
 
 export type { Screen };
 
@@ -20,8 +18,6 @@ function App() {
       <main className="main-content" role="main">
         {activeScreen === 'home' && <HomeScreen />}
         {activeScreen === 'notes' && <NotesScreen />}
-        {activeScreen === 'schedule' && <ScheduleScreen />}
-        {activeScreen === 'countdowns' && <CountdownsScreen />}
         {activeScreen === 'settings' && <SettingsScreen />}
       </main>
     </div>

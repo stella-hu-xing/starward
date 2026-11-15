@@ -1,218 +1,110 @@
-# Data Model
+# Data model — AI chat journal
 
-SQLite (`/data/hub.db`). All text is UTF-8. All timestamps are UTC ISO-8601 strings (`2026-11-08T10:14:00Z`). Each time-bearing row that depends on a local timezone also stores an IANA timezone string.
+> Proposed SQLite schema, not implemented migrations. See the implementation plan. Existing migrations/001_init.sql is incomplete legacy SQL; audit whether it has been applied before writing a migration strategy. Do not reset databases or rewrite applied migrations without approval.
 
-Migrations live in `migrations/` as numbered SQL files, applied sequentially at startup. The first migration creates the initial schema (notes, note_tags, notes_fts, ai_calls, ai_failures); subsequent migrations add countdowns, events, sync_state, oauth_accounts, email_scans, event_candidate_sources, push_subscriptions, sessions, and auth_credentials across milestones as specified in `agents/PLAN.md`.
+## Conventions
 
-## Tables
+- Local SQLite via better-sqlite3 repositories, foreign keys enabled. Store UTF-8 text and UTC ISO-8601 timestamps with consistent precision. UUIDs are generated in application code (Node crypto.randomUUID), not PostgreSQL SQL functions.
+- Use stable per-conversation sequence numbers; timestamps alone cannot order simultaneous messages. Server assigns timestamps and IDs, not the model/browser.
+- Explicit IANA timezone for date grouping and report boundaries. A report date is YYYY-MM-DD, not a UTC timestamp. Day queries use [start UTC, next local midnight UTC).
+- Reports store Markdown TEXT in SQLite. Rendering and any future file/PDF export derive from that source. No audio BLOBs, audio files, calendar tables, or multi-user ownership model required.
 
-### notes
+## v1 tables
 
-| column | type | notes |
-|---|---|---|
-| id | TEXT PK | UUIDv7 |
-| body | TEXT NOT NULL | Markdown text |
-| source | TEXT NOT NULL | `text` default. `voice` only if the client can reliably tell (see open questions) |
-| status | TEXT NOT NULL | `draft` (saved, tags not yet confirmed), `active`, `deleted` |
-| created_at | TEXT NOT NULL | UTC |
-| updated_at | TEXT NOT NULL | UTC |
-| deleted_at | TEXT | UTC, soft delete; purge after 30 days |
-| timezone | TEXT NOT NULL | IANA, e.g. `Australia/Melbourne` |
-| mentioned_date | TEXT | `YYYY-MM-DD`, resolved date phrase, nullable |
-| mentioned_date_phrase | TEXT | original phrase the model extracted, nullable |
+### conversations
 
-Indexes: `(created_at)`, `(status, created_at)`, `(mentioned_date)`.
+| Column | Type / rule |
+|---|---|
+| id | TEXT primary key, UUID |
+| title | TEXT, simple user/default title; AI title generation not required |
+| created_at | TEXT NOT NULL, UTC |
+| updated_at | TEXT NOT NULL, UTC |
 
-### note_tags
+Index updated_at for the conversation list.
 
-| column | type | notes |
-|---|---|---|
-| note_id | TEXT NOT NULL | FK → notes.id, ON DELETE CASCADE |
-| tag | TEXT NOT NULL | must exist in `config/tags.json` at write time |
-| PRIMARY KEY | (note_id, tag) | |
+### messages
 
-Index: `(tag)`.
+| Column | Type / rule |
+|---|---|
+| id | TEXT primary key, UUID |
+| conversation_id | TEXT NOT NULL, FK conversations.id |
+| sequence | INTEGER NOT NULL, increasing within conversation |
+| role | TEXT NOT NULL, user or assistant |
+| content | TEXT NOT NULL, user text or assistant Markdown; only unfinished/failed assistant attempts may be empty |
+| source | TEXT NOT NULL, text / voice / model |
+| status | TEXT NOT NULL, pending / streaming / complete / interrupted / failed |
+| client_request_id | TEXT, user-turn idempotency key; null for assistant rows |
+| reply_to_message_id | TEXT, FK messages.id; user message for assistant attempts |
+| attempt | INTEGER, assistant attempt number for that user turn |
+| created_at | TEXT NOT NULL, UTC acceptance/attempt-start timestamp |
+| updated_at | TEXT NOT NULL, UTC |
+| completed_at | TEXT, UTC on successful completion |
+| model | TEXT, actual Claude model for assistant reply |
+| error_code | TEXT, sanitized category only, no raw provider error |
 
-### notes_fts (FTS5 virtual table)
+Unique (conversation_id, sequence), unique (conversation_id, client_request_id) where non-null, unique (reply_to_message_id, attempt) for assistant attempts. Index created_at and (conversation_id, sequence). Enforce role/source/status combinations and same-conversation reply links in the service/schema as appropriate.
 
-Content table mirrors `notes.body`. Keep in sync with triggers on insert, update, and delete.
+User messages are committed complete before an AI call; voice content is the transcript. Assistant attempts transition pending -> streaming -> complete/interrupted/failed. Persist deltas in bounded checkpoints; recover pending/streaming attempts as interrupted after restart. Allow one active turn per conversation. Retries reuse the user message and create an assistant attempt, never duplicate user text.
 
-Chinese tokenization: FTS5's default tokenizer does not segment Chinese well. Evaluate the `trigram` tokenizer first (it works for substring search across CJK characters). Record the decision in `agents/PLAN.md`.
+Model history includes all user messages and complete assistant replies in sequence, not partial attempts. No automatic chat-history truncation or summary. Reports use messages whose created_at is in the selected local day, excluding incomplete assistant attempts. An assistant reply that crosses midnight belongs to its stored creation day; document/test this consistent rule. System prompts are versioned configuration, not user messages. Reports are not chat messages.
 
-Short-query fallback: FTS5 trigram requires queries of at least 3 characters. For 1–2 character queries (common in Chinese), fall back to a parameterized `LIKE` scan on `notes.body` with an index-assisted date-range filter. This is acceptable at the expected data scale and must be tested explicitly.
+### reports
 
-### events
+| Column | Type / rule |
+|---|---|
+| id | TEXT primary key, UUID |
+| report_date | TEXT NOT NULL, selected local YYYY-MM-DD |
+| timezone | TEXT NOT NULL, IANA |
+| revision | INTEGER NOT NULL, starts at 1 per date/timezone |
+| markdown | TEXT NOT NULL, validated nonempty report |
+| generated_at | TEXT NOT NULL, UTC |
+| input_cutoff_at | TEXT NOT NULL, UTC snapshot cutoff |
+| period_start_at / period_end_at | TEXT NOT NULL, UTC half-open local-day interval |
+| source_message_count | INTEGER NOT NULL |
+| excluded_incomplete_count | INTEGER NOT NULL, unfinished assistant messages skipped |
+| model / prompt_version | TEXT NOT NULL, provenance |
+| trigger | TEXT NOT NULL, manual (scheduled added in v1.5) |
 
-| column | type | notes |
-|---|---|---|
-| id | TEXT PK | UUIDv7 |
-| title | TEXT NOT NULL | |
-| start_at | TEXT NOT NULL | UTC |
-| end_at | TEXT | UTC, nullable for point-in-time |
-| timezone | TEXT NOT NULL | IANA |
-| all_day | INTEGER NOT NULL | 0 or 1; if 1, `start_date`/`end_date` are the source of truth and `start_at`/`end_at` are set to UTC midnight of the local dates for convenience only |
-| start_date | TEXT | `YYYY-MM-DD`, used for all-day |
-| end_date | TEXT | `YYYY-MM-DD`, exclusive end for all-day |
-| location | TEXT | optional |
-| description | TEXT | optional |
-| source | TEXT NOT NULL | `manual`, `gcal`, `ics`, `gmail` |
-| source_id | TEXT | gcal event id, ICS UID, or gmail message id |
-| source_sub_id | TEXT | optional stable discriminator: gmail candidate ordinal, ICS recurrence instance ID, gcal instance identity |
-| status | TEXT NOT NULL | `confirmed`, `candidate`, `rejected`, `cancelled` |
-| confidence | REAL | from extraction, nullable |
-| created_at | TEXT NOT NULL | UTC |
-| updated_at | TEXT NOT NULL | UTC |
+Unique (report_date, timezone, revision); index (report_date, generated_at). Save only successful reports; failures must not overwrite a revision. Allocate revisions transactionally. Read the latest revision by default; previous successful versions remain available.
 
-Unique index: `(source, source_id, source_sub_id)` where `source_id` is not null. Indexes: `(start_at)`, `(status, start_at)`.
+### report_messages
 
-Rules:
-- Candidates from `gmail` start as `candidate`. Accepting sets `confirmed`. Rejecting sets `rejected` and the same `(source_id, source_sub_id)` will not be re-proposed.
-- `gcal` items are written as `confirmed`; upsert by gcal event ID. Cancelled upstream sets `cancelled`.
-- `ics` items are written as `confirmed`; upsert by `(source_id=UID, source_sub_id=recurrence_instance_id)`; non-recurring events have empty `source_sub_id`.
-- Manual events are `confirmed`; `source_id` is empty.
-- Cross-source deduplication (same real event from Gmail and Google Calendar) is a future feature; out of scope for v1.
+| Column | Type / rule |
+|---|---|
+| report_id | TEXT NOT NULL, FK reports.id |
+| message_id | TEXT NOT NULL, FK messages.id |
+| position | INTEGER NOT NULL, source order in snapshot |
+| Primary key | (report_id, message_id) |
 
-### event_candidate_sources
+Unique (report_id, position). Snapshot eligible input in a short read transaction; release it before network calls. Sort sources by created_at then conversation_id then sequence. Save report/source links atomically after generation. v1 has no message-edit/delete feature; any future mutation must preserve report provenance explicitly. No cascading deletion of report sources by accident.
 
-For Gmail candidates, the email metadata lives here, not on `events`.
+### sessions and local credential
 
-| column | type | notes |
-|---|---|---|
-| event_id | TEXT PK | FK → events.id |
-| message_id | TEXT NOT NULL | Gmail message id |
-| thread_id | TEXT | |
-| subject | TEXT | |
-| sender | TEXT | display name and address |
-| received_at | TEXT | UTC |
+Sessions store a hash of an opaque token (primary key), created_at, expires_at, and last_seen_at, all UTC. Never store the plaintext session token. Store the single owner's salted password hash in protected local configuration; no users/signup/roles tables. Finalize credential provisioning, hashing library, cookie lifetime, and recovery in M0. Do not reuse the scaffold's passkey/TOTP multi-mode design by default.
 
-Do not store the message body.
+### Operational diagnostics
 
-### email_scans
+Structured logs suffice for v1: task (chat/transcribe/report), model/provider, prompt version, timing, token usage if supplied, safe status/error category. A separate analytics/failure database is not a prerequisite. Do not preserve raw failed model output in diagnostic tables. Sensitive assistant text belongs only in its private message row; successful reports belong only in reports. Legacy ai_failures.raw_output is not the target design.
 
-| column | type | notes |
-|---|---|---|
-| message_id | TEXT PK | Gmail message id |
-| scanned_at | TEXT NOT NULL | UTC |
-| status | TEXT NOT NULL | `ok`, `no_events`, `failed` |
-| attempts | INTEGER NOT NULL | default 1, max 3 |
-| prompt_version | TEXT | |
-| model | TEXT | OpenRouter slug used |
+## v1.5 additions (not v1 migrations)
 
-### countdowns
+### tags, message_tags, report_tags
 
-| column | type | notes |
-|---|---|---|
-| id | TEXT PK | UUIDv7 |
-| label | TEXT NOT NULL | |
-| target_date | TEXT NOT NULL | `YYYY-MM-DD` in the countdown's timezone |
-| timezone | TEXT NOT NULL | IANA |
-| direction | TEXT NOT NULL | `since` or `until` |
-| repeat_yearly | INTEGER NOT NULL | 0 or 1 |
-| archived | INTEGER NOT NULL | default 0 |
-| created_at | TEXT NOT NULL | UTC |
-| updated_at | TEXT NOT NULL | UTC |
+- tags: id TEXT PK, name TEXT NOT NULL UNIQUE, created_at UTC.
+- message_tags: message_id FK messages.id, tag_id FK tags.id, composite primary key.
+- report_tags: report_id FK reports.id, tag_id FK tags.id, composite primary key.
+- Index join tables by tag_id for filtering. Tag assignment is explicit; automatic AI tagging is not required. Decide a shared notebook vocabulary before implementation; the legacy fixed tag config is not automatically authoritative. Tags apply to a specific saved report revision unless a later decision says otherwise.
 
-### sync_state
+### messages_fts
 
-| column | type | notes |
-|---|---|---|
-| key | TEXT PK | e.g. `gcal:primary`, `gmail:scan` |
-| value | TEXT NOT NULL | JSON: syncToken, cursor, last run time |
-| updated_at | TEXT NOT NULL | UTC |
+FTS5 mirrors complete searchable message content, kept consistent with inserts, assistant updates/status changes, and any future deletes. Test trigram tokenization with Chinese/mixed text before committing to it. Trigram queries shorter than three characters need a parameterized substring fallback; escape literal LIKE wildcards. Combine with date/tag filters, bound query length, and test 1–2 character Chinese queries explicitly.
 
-### oauth_accounts
+### report_schedule and report_job_runs
 
-| column | type | notes |
-|---|---|---|
-| provider | TEXT PK | `google` |
-| account_email | TEXT NOT NULL | |
-| refresh_token_enc | BLOB NOT NULL | AES-256-GCM, nonce prepended |
-| scopes | TEXT NOT NULL | space-separated |
-| created_at | TEXT NOT NULL | UTC |
-| updated_at | TEXT NOT NULL | UTC |
+One settings row stores enabled, local_time (HH:mm), timezone, updated_at. A run record has a unique job key for report_date/timezone, status, timestamps, safe error code, and optional report_id FK. Use this state to prevent duplicate scheduled reports after restarts/DST and coordinate with manual reports. Exact missed-run/retry/manual interaction policy is an open v1.5 decision, not an implemented guarantee.
 
-### ai_calls
+## Storage and migration safety
 
-Log of every LLM call, used for debugging and cost tracking. No raw personal content.
+Use transactions for user-turn creation/idempotency, stream finalization, and report/revision saves. Enable and test required SQLite pragmas, native binding, and schema version tracking in M0. Network calls never hold open a database transaction. Use online SQLite backups and test restore; do not require an S3 account.
 
-| column | type | notes |
-|---|---|---|
-| id | TEXT PK | UUIDv7 |
-| task | TEXT NOT NULL | `tags`, `date_phrase`, `email_extract` |
-| model | TEXT NOT NULL | OpenRouter slug |
-| prompt_version | TEXT NOT NULL | |
-| input_hash | TEXT NOT NULL | SHA-256 of the input |
-| status | TEXT NOT NULL | `ok`, `validation_failed`, `error` |
-| latency_ms | INTEGER | |
-| prompt_tokens | INTEGER | |
-| completion_tokens | INTEGER | |
-| cost_usd | REAL | if returned by OpenRouter, else null |
-| created_at | TEXT NOT NULL | UTC |
-
-### ai_failures
-
-Stores diagnostic information for LLM calls that failed validation, for manual review. Keep for 14 days.
-
-| column | type | notes |
-|---|---|---|
-| id | TEXT PK | UUIDv7 |
-| ai_call_id | TEXT NOT NULL | FK → ai_calls.id |
-| error_category | TEXT NOT NULL | `validation_failed`, `schema_mismatch`, `empty_output`, `timeout` |
-| validation_paths | TEXT | JSON array of failed Zod path strings (bounded length) |
-| validation_error_summary | TEXT NOT NULL | short human-readable summary, no personal content |
-| model | TEXT NOT NULL | OpenRouter slug |
-| prompt_version | TEXT NOT NULL | |
-| latency_ms | INTEGER | |
-| created_at | TEXT NOT NULL | UTC |
-
-Privacy rule: never persist raw model output, error objects that may embed it, or any input containing personal content. Only structured diagnostics are stored.
-
-### sessions
-
-| column | type | notes |
-|---|---|---|
-| id | TEXT PK | hashed session token |
-| created_at | TEXT NOT NULL | UTC |
-| expires_at | TEXT NOT NULL | UTC |
-| last_seen_at | TEXT NOT NULL | UTC |
-
-### auth_credentials
-
-| column | type | notes |
-|---|---|---|
-| id | TEXT PK | |
-| kind | TEXT NOT NULL | `passkey` or `password` or `totp` (depending on decided auth mode) |
-| data_enc | BLOB NOT NULL | encrypted secret material or public key |
-| created_at | TEXT NOT NULL | UTC |
-
-### push_subscriptions
-
-| column | type | notes |
-|---|---|---|
-| endpoint | TEXT PK | Web Push endpoint |
-| keys_json | TEXT NOT NULL | p256dh and auth keys |
-| created_at | TEXT NOT NULL | UTC |
-
-## Derived values (not stored)
-
-- Countdown elapsed or remaining values: computed in `lib/dates.ts`.
-- "Today" and day grouping: computed in the owner's timezone at request time.
-- Upcoming-events views: query `events` with `status = confirmed` and a date window.
-
-## Export format (Markdown)
-
-Each note exports to one file:
-
-```markdown
----
-id: 0190f2a4-...
-created: 2026-11-08T21:14:00+11:00
-tags: [diary, idea]
-source: text
-mentioned_date: 2026-11-10
----
-
-Note body here.
-```
-
-Times in frontmatter use the note's own timezone offset so the file reads naturally.
+The old SQL contains unsupported UUID defaults, duplicate session definitions, and references to undefined notes tables; its calendar-event/email-integration, Google OAuth, sync-state, and push-reminder tables were removed on 2026-11-15 with the schedule/countdown content, so the scaffold SQL file was edited but has never been executed. Decide an additive repair or an explicitly approved clean development baseline only after checking actual migration/data state.

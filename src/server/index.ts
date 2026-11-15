@@ -5,7 +5,6 @@ import { cors } from 'hono/cors';
 import { config } from './config';
 import { healthRouter } from './routes/health';
 import { notesRouter } from './routes/notes';
-import { eventsRouter } from './routes/events';
 
 const app = new Hono();
 
@@ -25,7 +24,6 @@ app.route('/api', healthRouter);
 
 // CRUD routes
 app.route('/api/notes', notesRouter);
-app.route('/api/events', eventsRouter);
 // Serve static frontend from dist/web
 app.use(
   serveStatic({

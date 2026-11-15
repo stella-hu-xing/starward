@@ -36,14 +36,7 @@ function HomeScreen() {
           <span className="stat-value">0</span>
           <span className="stat-label">Notes</span>
         </div>
-        <div className="stat-card">
-          <span className="stat-value">0</span>
-          <span className="stat-label">Countdowns</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-value">0</span>
-          <span className="stat-label">Events today</span>
-        </div>
+
       </section>
     </div>
   );
