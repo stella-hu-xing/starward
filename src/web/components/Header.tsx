@@ -10,8 +10,6 @@ interface HeaderProps {
 const NAV_ITEMS = [
   { id: 'home', label: 'Home', icon: '🏠' },
   { id: 'notes', label: 'Notes', icon: '📝' },
-  { id: 'schedule', label: 'Schedule', icon: '📅' },
-  { id: 'countdowns', label: 'Countdowns', icon: '⏰' },
   { id: 'settings', label: 'Settings', icon: '⚙️' }
 ];
 

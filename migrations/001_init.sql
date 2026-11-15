@@ -31,44 +31,9 @@ CREATE TABLE IF NOT EXISTS ai_failures (
   created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
 );
 
-CREATE TABLE IF NOT EXISTS email_scans (
-  message_id TEXT PRIMARY KEY,
-  scanned_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
-  status TEXT NOT NULL DEFAULT 'no_events',
-  attempts INTEGER NOT NULL DEFAULT 1,
-  prompt_version TEXT,
-  model TEXT
-);
-
-CREATE TABLE IF NOT EXISTS event_candidate_sources (
-  event_id TEXT PRIMARY KEY,
-  message_id TEXT NOT NULL,
-  thread_id TEXT,
-  subject TEXT,
-  sender TEXT,
-  received_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
-);
-
-CREATE TABLE IF NOT EXISTS sync_state (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL,
-  updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
-);
-
-CREATE TABLE IF NOT EXISTS oauth_accounts (
-  provider TEXT PRIMARY KEY,
-  account_email TEXT NOT NULL,
-  refresh_token_enc BLOB NOT NULL,
-  scopes TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
-  updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
-);
-
-CREATE TABLE IF NOT EXISTS push_subscriptions (
-  endpoint TEXT PRIMARY KEY,
-  keys_json TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
-);
+-- Schedule/countdown product content (calendar events, email event extraction,
+-- gcal/gmail sync, Google OAuth, and push reminders) was removed on 2026-11-15;
+-- those products moved out of this repository.
 
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
@@ -91,11 +56,7 @@ CREATE TABLE IF NOT EXISTS backup_log (
   status TEXT NOT NULL DEFAULT 'success'
 );
 
-CREATE TABLE IF NOT EXISTS notification_preferences (
-  id TEXT PRIMARY KEY,
-  quiet_hours TEXT NOT NULL DEFAULT '',
-  push_enabled TEXT NOT NULL DEFAULT 'true'
-);
+
 
 CREATE TABLE IF NOT EXISTS tag_config (
   note_id TEXT REFERENCES notes(id) ON DELETE CASCADE,
@@ -113,5 +74,3 @@ CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes(created_at);
 CREATE INDEX IF NOT EXISTS idx_notes_status_created ON notes(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_notes_mentioned_date ON notes(mentioned_date);
 CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag);
-CREATE INDEX IF NOT EXISTS idx_event_source_source_id ON events(source, source_id);
-CREATE INDEX IF NOT EXISTS idx_event_status_start ON events(status, start_at);

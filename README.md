@@ -1,107 +1,89 @@
-# Starward
+# Starward — AI chat journal
 
-**a PA just for Stella. Personal Assistant, Perfect Aligned**
+> Documentation reset: 2026-11-15. This repository hosts only the AI chat journal. Schedule and countdown content was removed from the code on 2026-11-15 and will be moved to a separate project. The remaining code is an older scaffold, not an implementation of the requirements below. The repository name is unchanged; the final app name is undecided.
 
-A single-user, mobile-first web app (installable PWA) that combines three tools:
+## Goal
 
-1. **Notes**: capture spoken-style diary entries and sudden ideas, auto-tagged and dated, searchable by keyword and tag.
-2. **Schedule**: a personal calendar for planning weekends and holidays. Imports events from Google Calendar, from `.ics` files or subscription URLs, and from candidate events extracted out of Gmail.
-3. **Countdowns**: track how long since, or how long until, a date (anniversaries, special events). Yearly repeat supported.
+A personal chat app where I talk to an AI model by typing or speaking, then generate a daily report. The report summarizes the day's conversations, lists the highlights, and is saved for later reading.
 
-Hosted at `https://app.stellahu.me` (domain already owned: `stellahu.me`).
+The chat should feel like Claude's chat window: a quiet conversation view, readable streaming replies, and a straightforward composer. **The daily report is the distinctive part.**
 
-**v0 scope:** static frontend on Cloudflare Pages via GitHub Actions. No backend, no database, no API, no auth, no feature integrations. Deploy workflow and CNAME at Porkbun documented in `agents/V0.md`.
+Schedules and countdowns are separate products and were removed from this repository on 2026-11-15; they will be rebuilt in another place. This repository contains only the chat journal, and the other apps stay outside this roadmap.
 
-**v1 scope:** full personal assistant (notes, events, countdowns, Gmail, Calendar, push notifications). Hono + SQLite + Google APIs + OpenRouter + background jobs + VM deployment with Caddy. See `agents/PLAN.md` for milestone roadmap.
+## Scope
 
-## Users
+### v1 — must have
 
-One user: the owner. Multi-user is out of scope for v1, but do not hard-code single-user assumptions into data access. Subscription is a possible future feature; do not build billing.
+- Text chat with streaming replies. Send the full history of the current conversation on every request, including the new message. Do not mix unrelated conversations or silently truncate history.
+- Push-to-talk voice input. Record a clip, transcribe it through a speech-to-text API, and send the transcript as a normal user message. Continuous transcription is not required.
+- Store every user and assistant message with a timestamp and conversation ID. Reloading restores conversations. Save user text before contacting the model; distinguish interrupted and failed replies.
+- A **Generate daily report** button and date picker, covering the selected local day's messages across all conversations.
+- Save successful reports as Markdown in SQLite, with a summary and highlights. Render them safely in the app and provide an archive for later reading.
+- Responsive web UI, including a 375px-wide viewport. English, Chinese, and mixed-language content must work.
+- Single-owner local login only; no registration or account management.
 
-## Primary use cases
+### v1.5 — should have
 
-- **Spoken diary and idea capture.** The user dictates with the iPhone keyboard microphone (English and Chinese, mixed is common). Text lands in a note. Audio is never stored.
-- **Weekend and holiday planning.** View upcoming events, add manual events, see imported calendar items.
-- **Gmail event extraction.** Flight confirmations, bookings, appointments are turned into candidate events that wait in a review inbox. Nothing from email enters the schedule without explicit confirmation.
-- **Anniversary and event countdowns.** "Days since X" and "days until Y", shown on the home screen.
-- **Chat-based recall (later milestone).** From Claude chat, the user can search their own notes through an MCP server.
+- Automatic daily report at a configurable local time, for example 21:00. The server must be running; jobs cannot execute while the computer sleeps or is off.
+- Tags on messages and reports, aligned with the notebook/archive idea in the separate personal agent project. No integration with that project is required.
+- Search past messages by date, tag, or keyword, including Chinese queries.
 
-## Principles
+### Later — nice to have
 
-- **Own the data.** Plain, exportable data. The database is a SQLite file. Notes can be exported to Markdown with frontmatter. Nightly backups go to S3.
-- **Keep the stack portable.** One container, one origin, no vendor-specific services except external APIs (Google, OpenRouter) and S3 for backups.
-- **Free or cheap first.** Prefer free tiers. Paid services only when no reasonable free alternative exists, and flag them before adding.
-- **AI is a helper, never the authority.** LLM output is untrusted: validated with Zod, stored as a candidate or suggestion, and confirmed by the user before it becomes truth.
-- **Deterministic date handling.** Models may extract a date phrase; deterministic code resolves it to an absolute date in the user's timezone.
+- Live voice with continuous transcription while speaking.
+- PDF export or email delivery of reports.
+- Explicitly selected key facts from past reports as context for future chats.
+- Gmail or Outlook schedule import belongs to the separate personal agent project, not this chat journal.
 
-## Functional requirements (v1)
+### Out of scope for now
 
-### Notes
+- Schedule/countdown features and calendar/email integrations entirely: that content was removed from this repository on 2026-11-15 and will be moved to another project. No combined assistant dashboard here.
+- Multi-user accounts, sharing, billing, or auth beyond one local login.
+- Native mobile apps; a responsive web app is enough.
+- Model training/fine-tuning, vector search, MCP, and autonomous tools.
+- Permanent audio storage, text-to-speech, push notifications, cloud backups, and production infrastructure provisioning.
 
-- Create a note by typing or dictating into a single large input on the home screen.
-- Each note has: body (Markdown text), created timestamp, tags, source (`text` or `voice` — the client cannot tell voice from keyboard dictation, so default to `text`; see open questions).
-- Tag suggestion: on save, an LLM proposes 0–3 tags from a fixed tag list in config. User can accept, edit, or dismiss. Only confirmed tags are saved.
-- Fixed tag vocabulary lives in a config file (initial set: `diary`, `idea`, `todo`, `side-business`, `personal`). Adding a tag is a config change.
-- Date extraction: if the note mentions a date ("next Tuesday", "3 May"), the LLM returns a phrase; the server resolves it and shows the result for confirmation. Otherwise the note's created date is the date.
-- Search: full-text (SQLite FTS5) plus filters by tag and date range.
-- List view grouped by day, newest first.
-- Edit and delete notes. Deletes are soft (flag, purge after 30 days).
-- Language: notes can be in English, Chinese, or mixed. Search must handle Chinese text; test FTS tokenization for Chinese early (FTS5 `trigram` tokenizer is a candidate; verify).
+## Architecture
 
-### Schedule
+```text
+Browser: React + Vite
+   | text or temporary audio clip
+   v
+One local Node.js + TypeScript server (Hono)
+   |-- /api/chat        -> Claude API, streaming replies
+   |-- /api/transcribe  -> speech-to-text API (provider undecided)
+   |-- /api/report      -> Claude API, daily Markdown summary
+   |-- conversations / report archive / local login
+   v
+SQLite: conversations, messages, reports
+        tags and search indexes in v1.5
 
-- Event fields: title, start, end, timezone, all-day flag, location (optional), notes (optional), source, status.
-- Sources: `manual`, `gcal` (Google Calendar sync), `ics` (uploaded file or subscription), `gmail` (extracted candidate).
-- Status: `confirmed` or `candidate`. Gmail-extracted and any auto-imported items that need review start as `candidate`.
-- Review inbox: a list of candidates with accept, edit, and reject actions. Show the source email subject and sender, not the body.
-- Views: today, next 7 days, and a month/agenda view. Mobile-first agenda is the default.
-- ICS: upload `.ics` file (v1). Subscription URL sync is an open question.
-- Gmail: scan messages matching a configured filter (label or query), extract candidate events with the LLM, write to the review inbox. Read-only scope. Do not store email bodies; store only the extraction result and source metadata (message id, subject, sender, date).
+v1.5 scheduler -> same report service used by /api/report
+```
 
-### Countdowns
+Keep React, Vite, Hono, Zod, better-sqlite3, pnpm, and Vitest. Direct Claude API access replaces the old runtime OpenRouter design; provider adapter and dependency changes are future implementation work. API keys stay on the server. The editor's AI provider is independent of the app's runtime provider.
 
-- Fields: label, date, timezone, direction (`since` or `until`), repeat yearly (boolean).
-- Display: home screen card per countdown with the number of days, plus a secondary detail (years, months, days for "since"). Granularity of hours/minutes is an open question.
-- Yearly repeat: next occurrence is computed from the current date, in the stored timezone.
-- All countdown arithmetic is deterministic code with unit tests. No LLM involved.
+Start with one server serving the built UI and API on one origin, bound to loopback. Static Cloudflare Pages hosting alone cannot run the backend or store SQLite data. Public deployment and phone access need a separate security/hosting decision.
 
-### Notifications
+## Daily report rules
 
-- Web Push to the installed PWA, for: daily morning summary (today's events, countdowns reaching a milestone), and reminders for confirmed events if the user enables them.
-- iOS requires the PWA to be added to the home screen and the notification permission granted.
+- Use an explicit IANA timezone. Convert local midnight and the next local midnight into a UTC half-open interval; daylight-saving days are not always 24 hours.
+- Include that day's user messages and complete assistant messages across conversations, in stable timestamp order. Exclude unfinished assistant text and report-generation output. Attribute AI suggestions as suggestions, not facts about the user.
+- Snapshot inputs when generation begins. A report for today covers messages available then; later messages require regeneration.
+- Empty days show an empty state without an AI call. Failed generation must not replace a saved report. Explicit regeneration creates a new saved revision.
+- Never silently omit messages to fit a report prompt. Long days need coverage-preserving chunked summarization or a clear failure, not a misleading partial report.
 
-### Backup and export
+## Current implementation status
 
-- Nightly job: snapshot the SQLite database (`sqlite3 .backup` equivalent), upload to S3 with a date-stamped key, keep the last N snapshots (N configurable, default 30).
-- Nightly job: export notes as Markdown files with frontmatter (`created`, `tags`, `source`) to S3 under a separate prefix.
-- Manual export endpoint for the same Markdown bundle.
+The old shell — now three placeholder screens (Home, Notes, Settings) after the Schedule and Countdowns screens were removed on 2026-11-15 — and the placeholder routes remain until implementation milestones. Database initialization and AI evaluation are placeholders; the existing test is not an actual endpoint test. Chat, transcription, reports, local login, and report scheduling are not implemented.
 
-### Chat access (later milestone)
+The current deployment workflow uploads a static build to Cloudflare Pages, not the planned backend. Environment examples, migrations, PWA metadata, and deployment files still reflect the older scaffold and need a reviewed implementation pass. On 2026-11-15 the schedule/countdown routes and screens, calendar/gmail sync and OAuth settings, and the googleapis/ical.js dependencies were removed from this scaffold ahead of the move to another project; no feature was added.
 
-- Read-only MCP server exposing: `search_notes`, `read_note`, `list_tags`, `recent_notes`. Auth via bearer token. Details in `agents/PLAN.md`, milestone M7.
+## Documentation
 
-## Non-functional requirements
-
-- **Mobile-first.** Designed for an iPhone in portrait. Tap targets at least 44px. Safe-area insets respected. Works offline for reading recent data (cache), writes queue until online (simple retry queue is acceptable for v1).
-- **Security.** Single-user login. Secrets only in environment variables. OAuth refresh tokens encrypted at rest with a key from the environment. Never log email bodies, tokens, or full LLM prompts containing personal data. Rate-limit the login endpoint.
-- **Privacy of AI calls.** Only send what the task needs. For email extraction, send the subject, sender, date, and body text of filtered messages only.
-- **Observability.** Structured logs. Each LLM call logs: model slug, prompt version, latency, token usage, cost if returned, success or validation failure. No raw personal content in logs.
-- **Reliability.** Background jobs are idempotent (re-running a sync does not duplicate events). Google sync uses stored `syncToken` and handles `410 Gone` by doing a full resync.
-- **Testing.** Unit tests for date resolution, countdown math, tag validation, ICS parsing, and dedupe logic. Integration test for the notes API with a real SQLite file. Eval fixtures for extraction (see `agents/PLAN.md`).
-
-## Out of scope for v1
-
-- Outlook or Microsoft Graph
-- Audio storage or in-app speech recognition
-- Multi-user, sharing, billing, or subscriptions
-- Native iOS or Android apps
-- Vector search (added only after keyword search proves insufficient)
-- Write access from chat (MCP is read-only in v1)
-
-## Related docs
-
-- `AGENTS.md`: instructions for the coding agent (conventions, commands, rules)
-- `agents/ARCHITECTURE.md`: components, deployment, configuration
-- `agents/DATA_MODEL.md`: tables, fields, indexes
-- `agents/PLAN.md`: milestones, acceptance criteria, open questions
-- `agents/DEV_ENVIRONMENT.md`: development, agent, and deployment workflow
+- [Agent instructions](AGENTS.md)
+- [Architecture](agents/ARCHITECTURE.md)
+- [Data model](agents/DATA_MODEL.md)
+- [Milestones and open decisions](agents/PLAN.md)
+- [Development setup and limitations](agents/DEV_ENVIRONMENT.md)
+- [Separate personal-site plan](agents/SITE_PLAN.md)

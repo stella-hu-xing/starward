@@ -1,157 +1,61 @@
-# Development Environment
+# Development environment
 
-How the app is built, reviewed, and deployed. This document covers the workflow only. For what runs in production, see `ARCHITECTURE.md`.
+> Current scaffold and target local workflow, 2026-11-15. The README defines the chat journal; architecture and implementation plan describe work still to do.
 
-## Principles
+## Toolchain and repository
 
-- **Laptop first.** Most development happens on the owner's laptop in VS Code.
-- **OpenRouter for all AI coding.** Every model call, whether in the editor or in CI, uses the OpenRouter key. No subscription-based coding agents for daily work.
-- **No cloud coding agents in v1.** The project is small enough for local agents. Revisit only if tasks regularly exceed what a local session can handle.
-- **Git is the control plane.** Changes arrive as pull requests. Deploys are triggered from GitHub. The phone is a remote for GitHub, not a second development machine.
-- **The agent proposes, the owner merges.** No agent commits directly to `main`.
+- VS Code, strict TypeScript, Node.js 22 LTS (the current CI runtime), pnpm version pinned in package.json.
+- One package with src/server and src/web; no monorepo/toolchain migration required.
+- Keep changes focused and review diffs. Do not push, merge, or deploy without the owner's instruction. Do not assume branch protection or remote environment setup has been verified.
+- Agent instructions and the agents directory are the source of conventions. The editor's coding provider is separate from the app's direct Claude runtime API.
+- Use synthetic English, Chinese, and mixed-language fixtures. Never use real diary content, production databases, or live paid APIs in ordinary tests.
 
-## Repository
+## Existing commands and their limits
 
-- Private GitHub repository.
-- `main` is protected: pull request required, CI must pass (`typecheck`, `lint`, `test`), no force pushes.
-- Feature work happens on short-lived branches named `m1/notes-capture` style, one milestone task per branch.
-- `AGENTS.md` and `docs/` are the source of conventions for humans and agents alike.
+Run from the repository root:
 
-## Local development (laptop)
-
-- Editor: VS Code.
-- AI coding extension: Cline or Kilo Code, configured with OpenRouter as the provider. Use a separate OpenRouter key with a monthly spending cap, stored in the extension's settings, not in the repo.
-- Model choice: a cheap model for routine edits and tests; a stronger model for date logic, email extraction, and anything touching `ai/`.
-- Run `pnpm dev` locally. Use a local SQLite file in `./data/`, never the production database.
-- Use test fixtures for email and calendar data. Never point local development at the real Gmail or Google Calendar account unless testing the OAuth flow.
-
-## Phone workflow
-
-The phone does three things: create work, review work, and trigger deploys. It does not run code.
-
-| Task | Tool on phone |
+| Command | Current purpose / caveat |
 |---|---|
-| Describe a change, by typing or dictating | GitHub Mobile: create an issue with the `agent` label |
-| Review the agent's pull request | GitHub Mobile: read the diff, leave comments, approve |
-| Merge | GitHub Mobile |
-| Deploy to production | GitHub Mobile: run the `deploy` workflow manually |
-| Check whether the app is up | Browser: `app.stellahu.me/api/health`, or Honeycomb |
-| Check errors and traces | Honeycomb mobile web |
+| pnpm install --frozen-lockfile | Install pinned dependencies; SQLite native builds are currently denied |
+| pnpm dev | Launch server watch script plus Vite; backend is not yet a working local service |
+| pnpm dev:web | Existing frontend preview on port 5173; binds all interfaces, not suitable for private content |
+| pnpm dev:server | Watches the legacy server entry; Node listener/startup needs implementation |
+| pnpm typecheck | Server then web TypeScript checks; report any failures |
+| pnpm typecheck:web | Web-only check; not a substitute for checking the backend |
+| pnpm lint | ESLint over the repository |
+| pnpm test | Vitest; existing health test is an assertion placeholder, not endpoint coverage |
+| pnpm build:web | Build static UI into dist/web |
+| pnpm build | Build UI then compile server; does not prove startup works |
+| pnpm start | Intended built-server command; not a working backend guarantee |
+| pnpm eval:ai | Legacy placeholder; does not evaluate chat/report quality |
 
-GitHub Mobile is the only phone app required. No SSH client is needed on the phone for normal use.
+There is no pnpm db:migrate script. scripts/migrate.ts calls stub initialization, not a working migration runner. Do not mistake its console output for an applied schema.
 
-## Agent-driven changes (phone-initiated)
+pnpm-workspace.yaml currently denies better-sqlite3 build scripts, a holdover from the static shell. M0 must review native-build approval, Node ABI/toolchain compatibility, and reproducible install/setup before real SQLite tests. Do not enable scripts for every dependency indiscriminately.
 
-Each issue has two modes. The mode decides what the agent is allowed to do.
+## Intended local setup (M0 onward)
 
-- **Discuss mode (default).** The agent can read the repo and comment on the issue. It cannot create branches, push commits, or open PRs. Its token has read-only contents permission, so this is enforced by GitHub, not only by instructions.
-- **Build mode.** Entered only after the owner approves. The agent can create the `agent/<issue-number>` branch, commit, run tests, and open a draft PR. It can apply revisions from review comments.
+1. Use the pinned toolchain and resolve baseline install/typecheck/startup failures in a focused implementation task.
+2. Configure a loopback-only Hono listener, local SQLite directory, migrations, and a single-owner credential. Keep Vite loopback-only too; use its /api proxy rather than broad CORS.
+3. Finalize direct Claude integration, configurable chat/report model IDs, and STT provider/model/accepted formats/upload limits. Review their usage costs and data handling before using personal content.
+4. Update .env.example and configuration together. The current template is legacy OpenRouter/S3/MCP/Honeycomb configuration, not the new setup contract; its Google, web-push, and gmail-test entries were removed with the schedule/countdown content on 2026-11-15. Actual .env secrets must never be read into task output or committed. No provider keys in VITE-prefixed variables.
+5. Ensure development environment loading is explicit. Do not assume copying a .env file loads it automatically; document the implemented mechanism and required values when M0 is complete.
+6. Run the API and UI, log in locally, and verify persistence with a disposable database before connecting real providers.
 
-Modes are set with labels. A new issue with the `agent` label starts in discuss mode. The agent never changes its own mode.
+Local data, SQLite WAL files, snapshots, and credentials stay outside Git. Use a temporary database per integration test. Backup/restore uses a consistent SQLite snapshot, not a naive copy of an open WAL database. No hosted backup service is required.
 
-Flow:
+## Testing and acceptance
 
-1. The owner opens an issue from the phone with the `agent` label and describes the change. Dictation is fine. Reference the milestone task if possible, for example `M1: add tag suggestion retry`.
-2. Discuss mode. The agent reads the issue, `AGENTS.md`, and the relevant docs. It replies with its understanding, a proposed plan, any trade-offs, and any questions. Questions can be several at once here, since the owner is expected to answer them in one message. Each owner comment triggers a new discuss run, so the plan can be refined over several turns.
-3. Approval. When the owner is satisfied, the owner comments `/go`. The workflow swaps the `agent-discuss` label for `agent-build`, then starts a build run.
-4. Build mode. The agent creates `agent/<issue-number>`, makes the change, runs `pnpm typecheck && pnpm lint && pnpm test`, opens a draft PR, and comments with a summary and the test result. It writes the agreed decisions into the PR description's "Decisions" section.
-5. Revisions. In build mode, owner comments on the issue or review comments on the PR trigger a run that applies the requested change to the same branch and replies with what changed. If the owner wants to rethink the approach, the owner comments `/discuss`, which switches back to discuss mode. The agent does not push further commits in discuss mode, so the branch stays as it was.
-6. Merge. The owner merges on the phone once CI is green and the diff matches what was agreed.
+Run pnpm typecheck, pnpm lint, pnpm test, and pnpm build for implementation work; verify the relevant frontend build for docs-only work too. Report pre-existing blockers separately, without calling a failing check successful. Consult milestone acceptance checks before marking a feature complete.
 
-Limits of this design, which the owner should expect:
+Required future coverage: real HTTP health/startup, migrations/repositories, session protection, saved message before provider failure, streamed completion/interruption/retry, transcription limits/cleanup, local-day DST boundaries, report all-conversation coverage/revisions/empty days/provider failures, safe Markdown, and mobile UI at 375px. Mock providers; live API smoke tests are separate opt-in work using non-sensitive data and an explicit cost budget.
 
-- Latency: each turn takes a few minutes (runner startup, dependency install, tests). It's a thread, not a live chat.
-- The agent remembers nothing between runs except the issue thread, the branch, the PR description, and the docs. Anything important must be written into one of those.
-- Each issue has separate turn limits: by default 10 discuss runs and 5 build runs. When a limit is reached, the agent says so in a comment and asks the owner to continue on the laptop. These numbers are starting defaults, to be tuned after the first test.
-- Real-time chat from the phone would need a long-running service, such as a Telegram bot in front of a hosted agent. That's a separate component and is not part of v1.
+## CI and deployment today
 
-Workflow rules:
+The existing .github/workflows/ci.yml installs dependencies, checks web types, lints, runs Vitest, and builds the frontend. It does not typecheck/build the server or test real persistence yet. M0 must close that gap before treating CI as backend validation.
 
-- Triggers: `issues` (labeled `agent`), `issue_comment` (created), and `pull_request_review_comment` (created).
-- Only the owner's GitHub account can trigger a run or change a mode. The workflow checks the actor before doing anything, and ignores everyone else.
-- Discuss runs use a token with read-only contents permission and no push access. Build runs use a token limited to the `agent/*` branches.
-- The `/go` command is accepted only from the owner, and only on an issue currently in discuss mode.
-- A concurrency group per issue number prevents two runs from overlapping.
-- Each run has a timeout of 20 minutes.
-- Every reply from the agent includes the mode, the model slug, approximate token usage, and a link to the workflow run log.
-- Changes to `.github/workflows/`, `Dockerfile`, `docker-compose.yml`, `Caddyfile`, `migrations/`, or `src/server/ai/` are labelled `needs-laptop-review` automatically.
+The existing deploy.yml manually uploads the successful static web artifact to Cloudflare Pages on main, with a production environment declaration. Actual reviewer configuration/domain status is external and unverified here. It cannot run the Node API, SQLite, transcription, or scheduler. Do not trigger deployment as part of this reset.
 
-## First test run (verification)
+Dockerfile, docker-compose.yml, and Caddyfile are legacy scaffolding, not a requirement to provision a VPS/GCP/Tailscale deployment. Public hosting and remote phone access are separate decisions; local v1 does not depend on them. Mobile layout can be tested locally without exposing private APIs to the network.
 
-Run these steps in order before relying on the workflow. Do not skip ahead. Use a low-risk task, such as adding a unit test for `/api/health`.
-
-Prerequisites: the setup checklist below is done, and `agent.yml`, `ci.yml`, and `deploy.yml` exist in the repo.
-
-1. **Discuss only.** Open an issue with the `agent` label. Expected: a plan comment within a few minutes, the label `agent-discuss`, no new branch, no PR. Check the run log: the token shows read-only contents.
-2. **Discuss revision.** Reply with a constraint, such as "keep it to one test file". Expected: an updated plan. Still no branch, no PR.
-3. **Approval.** Comment `/go`. Expected: the label changes to `agent-build`, branch `agent/<n>` is created, CI runs, a draft PR opens, and the summary comment includes the mode, model slug, token usage, and run log link. The PR description has a "Decisions" section.
-4. **Build revision.** Leave a review comment on the PR asking for one small change. Expected: a new commit on the same branch, and a reply saying what changed.
-5. **Back to discuss.** Comment `/discuss`, then ask for another change. Expected: a plan only, with no new commits on the branch.
-6. **Permission check.** Ask a non-owner account to comment on the issue, if one is available. Expected: no reply and no label change. If no second account is available, confirm in the workflow file that the actor check exists and is the first step.
-7. **Limits.** Temporarily set the discuss limit to 2 and confirm the agent stops and asks you to continue on the laptop. Restore the default afterwards.
-8. **Merge and deploy.** Mark the PR ready and merge it once CI is green. Confirm `main` changed only through the merge. Run `deploy.yml` from GitHub Mobile, approve it, and confirm `/api/health` returns 200 and Honeycomb shows the deploy marker.
-
-Pass criteria: steps 1 to 5 behave as described, no run writes to `main`, and the deploy completes with an approval tap.
-
-Stop immediately if any run pushes to `main`, creates a branch while in discuss mode, or replies to a non-owner. To stop: disable `agent.yml` in the GitHub Actions tab, then revoke the OpenRouter key and create a new one.
-
-## Deploy workflow
-
-Deploys are manual, triggered from the phone or laptop.
-
-**V0:** GitHub Actions deploys the static frontend to Cloudflare Pages via Direct Upload.
-1. The owner runs `deploy.yml` from GitHub (workflow dispatch) on `main`; other branches are skipped.
-2. The `build` job calls the reusable CI workflow for that exact commit. It installs the pnpm version pinned in `package.json` before `setup-node` configures Node 22 and pnpm caching, then prints both versions. It installs with the frozen lockfile, runs web typecheck, lint, tests, then `pnpm build:web`. It uploads `dist/web/` as the `web-build` artifact only after success.
-   - `pnpm-workspace.yaml` explicitly allows the `esbuild` install script and denies `better-sqlite3` scripts for static-only v0. No interactive `pnpm approve-builds` is needed in CI. Revisit SQLite build approval before running the v1 backend.
-3. The `deploy` job declares `needs: build`, so a failed, cancelled, or skipped build blocks deployment. After the build succeeds, the owner approves the `production` environment (when required reviewers are configured).
-4. The deploy job downloads the successful build artifact and runs `wrangler pages deploy dist/web --project-name=<project>` using the Cloudflare API token from GitHub Actions secrets. It does not rebuild the app. Cloudflare Pages serves the uploaded files with automatic TLS on `app.stellahu.me`.
-5. If deployment fails, inspect the GitHub Actions logs; the existing production deployment remains available. Re-run the workflow after fixing the failure.
-
-**V1 (planned):** GitHub Actions deploys the Node.js backend + frontend to a GCP VM behind Caddy.
-1. The owner runs `deploy.yml` from GitHub (workflow dispatch) on `main`.
-2. The workflow connects to the VM over Tailscale or IAP, using a deploy key stored as a GitHub Actions secret.
-3. On the VM it runs: `git pull --ff-only`, `docker compose up -d --build`, then waits for `/api/health` to return 200.
-4. If the health check fails, the workflow runs `docker compose logs --tail 200` and marks the run as failed. Rollback is `git checkout <previous-sha> && docker compose up -d --build`.
-
-5. Both v0 and v1 deployments are protected by a GitHub environment named `production` with required reviewer set to the owner, so each deploy needs one approval tap on the phone.
-
-Secrets used by deploy:
-- V0: Cloudflare API token (`CLOUDFLARE_API_TOKEN`), Cloudflare account ID (`CLOUDFLARE_ACCOUNT_ID`)
-- V1: VM deploy key, Tailscale auth key (or IAP service account), production host name
-- Production application secrets (if any) stay in `.env` on the VM and are never copied into GitHub Actions.
-
-## Observability in the workflow
-
-- Each deploy adds a Honeycomb marker with the git SHA, so traces can be compared before and after a change.
-- The deploy health check and the post-deploy smoke test both emit a span, so a failed deploy is visible in Honeycomb as well as in GitHub.
-
-## What is deliberately not in v0
-
-- No VM, Docker, Caddy, Tailscale, Tailscale keys, GCP deployment, Tailscale VPNs.
-- No backend, database, auth, API endpoints, Google APIs, OpenRouter.
-- No cloud coding agents (Codex cloud, Claude Code on the web, Copilot coding agent). Revisit if local and CI-based agents struggle with tasks.
-- A separate staging environment. Covered by the shared-VM safety rules in `ARCHITECTURE.md`.
-- Automatic deploys on merge. Deploys stay manual until the owner decides otherwise.
-- Any tool that needs an always-on laptop. The laptop is not a server.
-
-## Setup checklist
-
-- [ ] Private repo created, `main` protected, CI workflow passing
-- [ ] OpenRouter key created with a monthly spending cap, stored in editor settings and as a GitHub secret for the agent
-- [ ] Cline or Kilo Code installed and pointed at OpenRouter
-- [ ] `agent.yml` and `deploy.yml` workflows added in the first M0 task
-- [ ] `production` environment created with the owner as required reviewer
-- [ ] **V0:** Cloudflare Pages project created and domain `app.stellahu.me` attached
-- [ ] **V0:** Porkbun DNS CNAME added: `app` → `<project>.pages.dev`
-- [ ] **V0:** GitHub Actions secrets for Cloudflare API added
-- [ ] **V0:** First deploy completed and live site verified (`https://app.stellahu.me` loads)
-- [ ] **V1:** (future) VM and its secrets set up (outside this scope)
-- [ ] Check current GitHub Actions free minutes for a private repository and the Honeycomb free tier before relying on either
-
-## Open questions
-
-1. Agent CLI: Aider is the proposed default because it supports OpenRouter and runs non-interactively. Confirm after a small trial.
-2. Whether the agent runs on GitHub-hosted runners (simplest) or a self-hosted runner on the VM (uses the VM's CPU and RAM, not recommended on the `e2-micro`).
-3. Whether the owner wants the `needs-laptop-review` rule to cover all of `src/server/` or only `src/server/ai/`.
-4. Whether a real-time chat interface is worth the always-on component it needs, or whether the issue-thread flow is enough.
-5. Turn limits: 10 discuss runs and 5 build runs per issue are starting defaults. Confirm or adjust after the first test run.
+No agent.yml exists. Earlier docs described hypothetical phone-triggered agents, labels, and hosted observability as though implemented; these are not prerequisites or active project guarantees. The personal-site migration is tracked separately and does not block local app work.
