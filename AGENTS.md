@@ -1,13 +1,33 @@
 # Agent instructions
 
-Read the README and every document in the agents directory before changes. The README defines scope; the implementation plan defines milestones and open decisions. These replace the old combined-assistant/static-only v0 rules.
+Read the README and every document in the agents directory before changes. The README defines scope; the implementation plan defines milestones and open decisions.
+
+## Current-state-only policy
+
+Project files (code, comments, READMEs, specs, config) describe what the
+system is now. Do not write history into them.
+
+Do not add:
+- dates or timelines ("as of 2026-11-15", "recently", "was changed to")
+- references to removed or replaced components ("the legacy X was removed")
+- migration notes, changelogs, or "previously" / "no longer" language
+- comments explaining what code used to do
+
+When a decision changes, update the affected files so they state the new
+truth directly, and delete the outdated content. Do not leave a trace of
+the old version.
+
+Do not create decision logs, changelogs, or ADR-style files in the project until explicitly asked.
+
+If a change makes existing text inaccurate, fix the text. If you're unsure
+what the current truth is, ask rather than guessing.
 
 ## Product boundary
 
 - Build one personal AI chat journal: text or push-to-talk conversation, followed by saved daily Markdown reports.
 - v1: streaming chat, durable history, clip transcription, on-demand reports, report archive, one local login, responsive UI.
 - v1.5: scheduled reports, tags, message search. Later: continuous voice, PDF/email, explicit report-derived memory.
-- Schedules and countdowns were removed from this repository on 2026-11-15 and will be moved to another project; do not add schedule/countdown features, calendar/email/ICS integrations, or a combined dashboard here. Also do not implement MCP, vector search, multi-user, billing, or model training.
+- Schedule/countdown products are outside this repository's scope; do not add schedule/countdown features, calendar/email/ICS integrations, or a combined dashboard here. Also do not implement MCP, vector search, multi-user, billing, or model training.
 - These docs describe a target, not completed functionality. Do not describe scaffold placeholders as working features.
 
 ## Stack and layout
@@ -17,7 +37,7 @@ Read the README and every document in the agents directory before changes. The R
 - One local Hono Node server serves API and built UI. No three-server split or separate worker service.
 - SQLite through better-sqlite3; database access only through repositories in src/server/db/.
 - Zod validates external input, provider event envelopes, and structured output. Streamed chat and Markdown reports are text, not JSON extraction output.
-- Runtime chat/report provider: direct Claude API, replacing the OpenRouter/openai scaffold. Select the Anthropic integration and speech-to-text provider in M0; do not claim their SDKs are installed.
+- Target runtime chat/report provider: direct Claude API. Select the Anthropic integration and speech-to-text provider in M0; do not claim their SDKs are installed.
 - Vitest tests. Check dependencies and the plan before adding libraries; ask before introducing additional services. Scheduling belongs to v1.5.
 
 Server folders: routes/ for HTTP/streaming transport; services/ for business logic; ai/ for all provider calls and versioned prompts; db/ for connection/migrations/repositories; lib/ for dates/errors/logging; jobs/ only for v1.5. UI stays in src/web/, SQL in migrations/. Prefer explicit functions over generic frameworks.
@@ -43,8 +63,8 @@ Server folders: routes/ for HTTP/streaming transport; services/ for business log
 
 ## Workflow and completion
 
-- Record choices/assumptions with date and reason in the implementation plan. Ask about unresolved material product/provider decisions; do not invent infrastructure requirements.
-- Preserve data. Never edit applied migrations or reset databases without approval. Audit migration state before replacing the incomplete legacy schema.
+- Keep choices and assumptions current in the implementation plan without dated decision records. Ask about unresolved material product/provider decisions; do not invent infrastructure requirements.
+- Preserve data. Never edit applied migrations or reset databases without approval. Audit migration state before implementing schema changes.
 - Keep changes focused. No push, deploy, secret change, or protection change without instruction. Plan/read-only interactions do not authorize edits.
 - Review the diff; run pnpm typecheck, pnpm lint, pnpm test, and the relevant build. Report failures honestly, including pre-existing blockers; do not silently expand scope to fix them.
 - Test service logic with temporary real SQLite databases and mocked providers. No paid/live API calls in ordinary tests.
