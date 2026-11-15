@@ -1,6 +1,6 @@
 # Architecture — AI chat journal
 
-> Target design, 2026-11-15. Not implemented by the current scaffold. See the implementation plan for sequencing.
+> Target backend design, 2026-11-15; not implemented by the current server scaffold. The responsive Chat/Journal frontend is an in-memory mock UI, not an integration with the flows below. See the implementation plan for completed work and sequencing.
 
 ## One app, one local server
 
