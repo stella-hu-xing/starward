@@ -1,23 +1,34 @@
-import React from 'react';
-import Header from './components/Header';
-import HomeScreen from './screens/HomeScreen';
-import NotesScreen from './screens/NotesScreen';
-import SettingsScreen from './screens/SettingsScreen';
 import { useState } from 'react';
+import Header from './components/Header';
+import { useChatJournal } from './hooks/useChatJournal';
+import ChatScreen from './screens/ChatScreen';
+import JournalScreen from './screens/JournalScreen';
+import SettingsScreen from './screens/SettingsScreen';
 
-type Screen = 'home' | 'notes' | 'settings';
+type Screen = 'chat' | 'journal' | 'settings';
 
 export type { Screen };
 
 function App() {
-  const [activeScreen, setActiveScreen] = useState<Screen>('home');
+  const [activeScreen, setActiveScreen] = useState<Screen>('chat');
+  const journal = useChatJournal();
 
   return (
     <div className="app">
-      <Header activeScreen={activeScreen} onScreenChange={(screen: string) => setActiveScreen(screen as Screen)} />
+      <Header activeScreen={activeScreen} onScreenChange={setActiveScreen} />
       <main className="main-content" role="main">
-        {activeScreen === 'home' && <HomeScreen />}
-        {activeScreen === 'notes' && <NotesScreen />}
+        {activeScreen === 'chat' && (
+          <ChatScreen journal={journal} onOpenJournal={() => setActiveScreen('journal')} />
+        )}
+        {activeScreen === 'journal' && (
+          <JournalScreen
+            journal={journal}
+            onOpenConversation={(id) => {
+              journal.selectConversation(id);
+              setActiveScreen('chat');
+            }}
+          />
+        )}
         {activeScreen === 'settings' && <SettingsScreen />}
       </main>
     </div>

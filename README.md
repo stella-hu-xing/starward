@@ -75,7 +75,7 @@ Start with one server serving the built UI and API on one origin, bound to loopb
 
 ## Current implementation status
 
-The old shell — now three placeholder screens (Home, Notes, Settings) after the Schedule and Countdowns screens were removed on 2026-11-15 — and the placeholder routes remain until implementation milestones. Database initialization and AI evaluation are placeholders; the existing test is not an actual endpoint test. Chat, transcription, reports, local login, and report scheduling are not implemented.
+The legacy Home/Notes shell has been replaced with a typed, in-memory Chat/Journal/Settings demo. Chat supports conversation selection, new chats, a growing composer, and progressively revealed canned replies. Journal browses chat history by month, with topic chips, cross-chat daily summaries, and links back to conversations. This is a history calendar, not a scheduling feature. English/Chinese and a voice-source fixture are included. Reloading resets all demo changes; no API or real AI is called, and summaries are static fixtures rather than generated results. Calendar helper tests are real unit tests; the health test remains a placeholder. Durable chat, transcription, report generation, local login, and scheduling remain unimplemented.
 
 The current deployment workflow uploads a static build to Cloudflare Pages, not the planned backend. Environment examples, migrations, PWA metadata, and deployment files still reflect the older scaffold and need a reviewed implementation pass. On 2026-11-15 the schedule/countdown routes and screens, calendar/gmail sync and OAuth settings, and the googleapis/ical.js dependencies were removed from this scaffold ahead of the move to another project; no feature was added.
 
