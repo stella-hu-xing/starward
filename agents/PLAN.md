@@ -33,8 +33,8 @@ Reloading resets demo state. No provider/API integration, database persistence, 
 - [ ] Finalize Claude integration, chat/report model IDs, STT provider/model/audio limits, owner credential provisioning/hashing, and timezone. Update configuration and .env.example together.
 - [ ] Implement local owner login/session, hashed credentials/tokens, private-route protection, origin/CSRF checks, and rate limits. No signup.
 - [x] Replace legacy Home/Notes navigation with Chat/Journal/Settings using typed mock data (2026-11-15). This is an in-memory UI only; persistence, provider streaming, and summary generation remain M1/M3 work.
-- [ ] Review legacy PWA metadata/caching and retire remaining unrelated config/dependencies. Responsive mock UI work and its verified checks are recorded separately above.
-- [ ] Make CI typecheck/build the server too, with real repository/HTTP tests and mocked providers. Do not deploy the local backend via static Pages.
+- [x] Retire remaining unrelated scaffold config/dependencies (2026-11-15 tidy-up): notes routes, openai package, eval:ai script, OpenRouter/S3/MCP/Honeycomb env entries, Docker/Caddy/compose files, Pages deploy workflow, and PWA api-response caching. PWA metadata/icon review is still open. Responsive mock UI work and its verified checks are recorded separately above.
+- [x] Make CI typecheck/build the server too (2026-11-15 tidy-up). [ ] Real repository/HTTP tests and mocked providers remain open. Do not deploy the local backend via static Pages.
 
 Acceptance: reproducible install, full passing checks, HTTP startup, session protection, migrations/restart persistence, disposable backup/restore, no browser secrets/private API caches. No paid API call required.
 
@@ -168,3 +168,21 @@ Changes: `pnpm add hono@^4.13.17` (matches the already-locked peer version; no o
 | git diff --check | Passed |
 
 Checks ran on 2026-11-15 with the available Node 26.8.1 and pinned pnpm 12.18.0; CI pins Node 22 with the same lockfile. No provider was called, no data or deployment was touched, and CI still does not typecheck/build the server (separate M0 item).
+## Validation record — scaffold tidy-up before real chat (2026-11-15)
+
+Goal: remove legacy out-of-scope scaffold so M1 chat work starts from a clean, consistent main. The pending README/router edits on `update-doc` were committed and the branch was fast-forward merged into main; nothing was pushed. Removed: placeholder notes routes and their mounts, the unused openai dependency (via `pnpm remove`, lockfile updated), the eval:ai script and scripts/eval-ai.ts, the Cloudflare Pages deploy workflow, Dockerfile/Caddyfile/docker-compose.yml, and the OpenRouter/S3/MCP/Honeycomb environment entries. config.ts and .env.example now cover only port, data directory, database path, and timezone; the database default filename changed hub.db -> starward.db (no database file exists yet). Owner-credential and provider-key variables are deliberately not pre-declared; they return with their M0 implementation. migrations/001_init.sql (never applied; scripts/migrate.ts runs no SQL) was repaired: the duplicate sessions table and duplicated expires_at column were removed, gen_random_uuid() UUID columns became app-generated TEXT keys, and the notes/tag tables plus indexes referencing a nonexistent notes table were removed; it remains a scaffold pending the M0 v1-schema audit against DATA_MODEL.md. vite.config.ts no longer runtime-caches api.* responses (AGENTS privacy rule) and lost the /mcp proxy; dev:web now binds 127.0.0.1 instead of 0.0.0.0. CI now typechecks and builds the server and no longer uploads a web artifact. Stale dist/server notes orphans were cleaned before rebuild. No feature was added and no provider was called.
+
+| Check | Result |
+|---|---|
+| pnpm install --frozen-lockfile | Passed |
+| pnpm typecheck:server / typecheck:web | Passed |
+| pnpm lint | Passed, exit 0 |
+| pnpm test | Passed; 12 calendar tests plus the pre-existing placeholder health test |
+| pnpm build:web / build:server (clean dist/server) | Passed; dist/server/routes contains only health/index |
+| git diff --check | Passed |
+
+Checks ran on 2026-11-15 with the available Node 26.8.1 and pinned pnpm 12.18.0; CI pins Node 22 with the same lockfile. Real HTTP/repository tests, the M0 listener/database, and provider selection remain open milestones.
+
+## Publication follow-up (2026-11-15)
+
+At the owner's request to push and raise a PR, fetched the latest main (which already includes PR #14), cherry-picked the two tidy-up commits onto `chore/tidy-scaffold`, and pushed that branch. Local main now matches origin/main. Verified PR [#18](https://github.com/stella-hu-xing/starward/pull/18) is open from `chore/tidy-scaffold` into `main`; no merge or deployment was requested or performed. Full typecheck and all 13 tests passed again on this branch. Updating the PR title/body through the GitHub API failed with HTTP 401; the PR retains its existing title and empty body.

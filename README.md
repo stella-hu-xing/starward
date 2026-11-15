@@ -37,7 +37,6 @@ Schedules and countdowns are separate products and were removed from this reposi
 
 ### Out of scope for now
 
-- Schedule/countdown features and calendar/email integrations entirely: that content was removed from this repository on 2026-11-15 and will be moved to another project. No combined assistant dashboard here.
 - Multi-user accounts, sharing, billing, or auth beyond one local login.
 - Native mobile apps; a responsive web app is enough.
 - Model training/fine-tuning, vector search, MCP, and autonomous tools.
@@ -87,7 +86,7 @@ The legacy Home/Notes shell has been replaced with a typed, in-memory Chat/Journ
 - [ ] Physical-phone keyboard/notch checks and visual acceptance.
 - [ ] Backend persistence, real provider streaming, transcription, report generation/revisions, and local login (see the [implementation plan](agents/PLAN.md)).
 
-The current deployment workflow uploads a static build to Cloudflare Pages, not the planned backend. Environment examples, migrations, PWA metadata, and deployment files still reflect the older scaffold and need a reviewed implementation pass. On 2026-11-15 the schedule/countdown routes and screens, calendar/gmail sync and OAuth settings, and the googleapis/ical.js dependencies were removed from this scaffold ahead of the move to another project; no feature was added.
+On 2026-11-15 the schedule/countdown routes and screens, calendar/gmail sync and OAuth settings, and the googleapis/ical.js dependencies were removed ahead of the move to another project. Later the same day a tidy-up removed the legacy Cloudflare Pages deploy workflow, Docker/Caddy/compose files, placeholder notes routes, the unused openai dependency, and the OpenRouter/S3/MCP/Honeycomb environment entries; configuration now covers only port, data directory, database path, and timezone. Migrations and PWA metadata remain scaffold-era and need a reviewed M0 implementation pass; no feature was added.
 
 ## Documentation
 

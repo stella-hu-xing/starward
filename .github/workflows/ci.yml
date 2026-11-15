@@ -31,17 +31,13 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck (web)
         run: pnpm typecheck:web
-      - name: Lint (web)
+      - name: Typecheck (server)
+        run: pnpm typecheck:server
+      - name: Lint
         run: pnpm lint
       - name: Tests
         run: pnpm test
       - name: Build web app
         run: pnpm build:web
-      - name: Upload web build
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
-        with:
-          name: web-build
-          path: dist/web/
-          if-no-files-found: error
-          retention-days: 1
+      - name: Build server
+        run: pnpm build:server
