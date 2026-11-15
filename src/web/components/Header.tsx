@@ -1,21 +1,25 @@
-import React from 'react';
-
 import type { Screen } from '../App';
 
 interface HeaderProps {
   activeScreen: Screen;
-  onScreenChange: (screen: string) => void;
+  onScreenChange: (screen: Screen) => void;
 }
 
-const NAV_ITEMS = [
-  { id: 'home', label: 'Home', icon: '🏠' },
-  { id: 'notes', label: 'Notes', icon: '📝' },
-  { id: 'settings', label: 'Settings', icon: '⚙️' }
+const NAV_ITEMS: Array<{ id: Screen; label: string; icon: string }> = [
+  { id: 'chat', label: 'Chat', icon: '💬' },
+  { id: 'journal', label: 'Journal', icon: '🗓️' },
+  { id: 'settings', label: 'Settings', icon: '⚙️' },
 ];
 
 function Header({ activeScreen, onScreenChange }: HeaderProps) {
   return (
     <header className="header" role="banner">
+      <div className="brand">
+        <span aria-hidden="true" className="brand-mark">
+          ✦
+        </span>
+        <span className="brand-name">Starward</span>
+      </div>
       <nav aria-label="Main navigation">
         <ul className="nav-list">
           {NAV_ITEMS.map((item) => (
