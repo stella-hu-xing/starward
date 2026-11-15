@@ -37,7 +37,6 @@ Schedules and countdowns are separate products and were removed from this reposi
 
 ### Out of scope for now
 
-- Schedule/countdown features and calendar/email integrations entirely: that content was removed from this repository on 2026-11-15 and will be moved to another project. No combined assistant dashboard here.
 - Multi-user accounts, sharing, billing, or auth beyond one local login.
 - Native mobile apps; a responsive web app is enough.
 - Model training/fine-tuning, vector search, MCP, and autonomous tools.
