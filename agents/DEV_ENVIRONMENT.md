@@ -18,7 +18,7 @@ Run from the repository root:
 |---|---|
 | pnpm install --frozen-lockfile | Install pinned dependencies; SQLite native builds are currently denied |
 | pnpm dev | Launch server watch script plus Vite; backend is not yet a working local service |
-| pnpm dev:web | Existing frontend preview on port 5173; binds all interfaces, not suitable for private content |
+| pnpm dev:web | Frontend preview on port 5173; loopback-only since the 2026-11-15 tidy-up |
 | pnpm dev:server | Watches the legacy server entry; Node listener/startup needs implementation |
 | pnpm typecheck | Server then web TypeScript checks; report any failures |
 | pnpm typecheck:web | Web-only check; not a substitute for checking the backend |
@@ -27,7 +27,6 @@ Run from the repository root:
 | pnpm build:web | Build static UI into dist/web |
 | pnpm build | Build UI then compile server; does not prove startup works |
 | pnpm start | Intended built-server command; not a working backend guarantee |
-| pnpm eval:ai | Legacy placeholder; does not evaluate chat/report quality |
 
 There is no pnpm db:migrate script. scripts/migrate.ts calls stub initialization, not a working migration runner. Do not mistake its console output for an applied schema.
 
@@ -38,7 +37,7 @@ pnpm-workspace.yaml currently denies better-sqlite3 build scripts, a holdover fr
 1. Use the pinned toolchain and resolve baseline install/typecheck/startup failures in a focused implementation task.
 2. Configure a loopback-only Hono listener, local SQLite directory, migrations, and a single-owner credential. Keep Vite loopback-only too; use its /api proxy rather than broad CORS.
 3. Finalize direct Claude integration, configurable chat/report model IDs, and STT provider/model/accepted formats/upload limits. Review their usage costs and data handling before using personal content.
-4. Update .env.example and configuration together. The current template is legacy OpenRouter/S3/MCP/Honeycomb configuration, not the new setup contract; its Google, web-push, and gmail-test entries were removed with the schedule/countdown content on 2026-11-15. Actual .env secrets must never be read into task output or committed. No provider keys in VITE-prefixed variables.
+4. Update .env.example and configuration together. The template now covers only port, data directory, database path, and timezone after the 2026-11-15 tidy-up; Claude/STT key variables and owner-credential settings are added with their M0 implementation, never pre-declared. Actual .env secrets must never be read into task output or committed. No provider keys in VITE-prefixed variables.
 5. Ensure development environment loading is explicit. Do not assume copying a .env file loads it automatically; document the implemented mechanism and required values when M0 is complete.
 6. Run the API and UI, log in locally, and verify persistence with a disposable database before connecting real providers.
 
@@ -54,10 +53,10 @@ Required future coverage: real HTTP health/startup, migrations/repositories, ses
 
 ## CI and deployment today
 
-The existing .github/workflows/ci.yml installs dependencies, checks web types, lints, runs Vitest, and builds the frontend. It does not typecheck/build the server or test real persistence yet. M0 must close that gap before treating CI as backend validation.
+The existing .github/workflows/ci.yml installs dependencies, typechecks and builds both the web and server code, lints, and runs Vitest since the 2026-11-15 tidy-up. It still does not test real persistence. M0 must close that gap before treating CI as backend validation.
 
-The existing deploy.yml manually uploads the successful static web artifact to Cloudflare Pages on main, with a production environment declaration. Actual reviewer configuration/domain status is external and unverified here. It cannot run the Node API, SQLite, transcription, or scheduler. Do not trigger deployment as part of this reset.
+The legacy deploy.yml Cloudflare Pages upload was removed on 2026-11-15; static Pages hosting cannot run the Node API, SQLite, transcription, or scheduler. Do not add deployment workflows without an explicit owner decision.
 
-Dockerfile, docker-compose.yml, and Caddyfile are legacy scaffolding, not a requirement to provision a VPS/GCP/Tailscale deployment. Public hosting and remote phone access are separate decisions; local v1 does not depend on them. Mobile layout can be tested locally without exposing private APIs to the network.
+Dockerfile, docker-compose.yml, and Caddyfile were removed on 2026-11-15 as legacy scaffolding; they were never a requirement to provision a VPS/GCP/Tailscale deployment. Public hosting and remote phone access are separate decisions; local v1 does not depend on them. Mobile layout can be tested locally without exposing private APIs to the network.
 
 No agent.yml exists. Earlier docs described hypothetical phone-triggered agents, labels, and hosted observability as though implemented; these are not prerequisites or active project guarantees. The personal-site migration is tracked separately and does not block local app work.

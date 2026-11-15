@@ -1,5 +1,9 @@
--- Migration 001: Initial schema for Starward database
--- Tables created by v0 scaffolding
+-- Migration 001: scaffold schema inherited from the v0 static shell.
+-- Never applied: scripts/migrate.ts runs no SQL and no database file exists.
+-- M0 must audit this file against agents/DATA_MODEL.md (conversations,
+-- messages, reports) before implementing migration tracking; the v1 schema
+-- replaces these tables. IDs are UUIDs generated in application code
+-- (crypto.randomUUID), never PostgreSQL SQL functions.
 
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
@@ -10,7 +14,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 
 CREATE TABLE IF NOT EXISTS ai_calls (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id TEXT PRIMARY KEY,
   task TEXT NOT NULL,
   model TEXT NOT NULL,
   prompt_version TEXT NOT NULL,
@@ -23,24 +27,15 @@ CREATE TABLE IF NOT EXISTS ai_calls (
   created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
 );
 
+-- DATA_MODEL.md replaces raw_output persistence with sanitized error
+-- categories; M0 decides this table's final shape or removal.
+
 CREATE TABLE IF NOT EXISTS ai_failures (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id TEXT PRIMARY KEY,
   ai_call_id TEXT NOT NULL,
   raw_output TEXT NOT NULL,
   validation_error TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
-);
-
--- Schedule/countdown product content (calendar events, email event extraction,
--- gcal/gmail sync, Google OAuth, and push reminders) was removed on 2026-11-15;
--- those products moved out of this repository.
-
-CREATE TABLE IF NOT EXISTS sessions (
-  id TEXT PRIMARY KEY,
-  created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
-  expires_at TEXT NOT NULL,
-  last_seen_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS auth_credentials (
@@ -56,21 +51,8 @@ CREATE TABLE IF NOT EXISTS backup_log (
   status TEXT NOT NULL DEFAULT 'success'
 );
 
-
-
-CREATE TABLE IF NOT EXISTS tag_config (
-  note_id TEXT REFERENCES notes(id) ON DELETE CASCADE,
-  tag TEXT NOT NULL CHECK (tag IN ('diary','idea','todo','side-business','personal')),
-  PRIMARY KEY (note_id, tag)
-);
-
-CREATE TABLE IF NOT EXISTS note_tags (
-  note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
-  tag TEXT NOT NULL CHECK (tag IN ('diary','idea','todo','side-business','personal')),
-  PRIMARY KEY (note_id, tag)
-);
-
-CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes(created_at);
-CREATE INDEX IF NOT EXISTS idx_notes_status_created ON notes(status, created_at);
-CREATE INDEX IF NOT EXISTS idx_notes_mentioned_date ON notes(mentioned_date);
-CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag);
+-- Schedule/countdown product content (calendar events, email event
+-- extraction, gcal/gmail sync, Google OAuth, and push reminders) was removed
+-- on 2026-11-15; those products moved out of this repository. The legacy
+-- notes/tag tables and notes indexes were removed with the notes scaffold on
+-- 2026-11-15.
