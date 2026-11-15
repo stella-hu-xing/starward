@@ -182,3 +182,7 @@ Goal: remove legacy out-of-scope scaffold so M1 chat work starts from a clean, c
 | git diff --check | Passed |
 
 Checks ran on 2026-11-15 with the available Node 26.8.1 and pinned pnpm 12.18.0; CI pins Node 22 with the same lockfile. Real HTTP/repository tests, the M0 listener/database, and provider selection remain open milestones.
+
+## Publication follow-up (2026-11-15)
+
+At the owner's request to push and raise a PR, fetched the latest main (which already includes PR #14), cherry-picked the two tidy-up commits onto `chore/tidy-scaffold`, and pushed that branch. Local main now matches origin/main. Verified PR [#18](https://github.com/stella-hu-xing/starward/pull/18) is open from `chore/tidy-scaffold` into `main`; no merge or deployment was requested or performed. Full typecheck and all 13 tests passed again on this branch. Updating the PR title/body through the GitHub API failed with HTTP 401; the PR retains its existing title and empty body.
